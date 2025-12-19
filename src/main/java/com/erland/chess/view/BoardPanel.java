@@ -3,6 +3,7 @@ package com.erland.chess.view;
 import com.erland.chess.model.Board;
 import com.erland.chess.model.Board.GameState;
 import com.erland.chess.model.pieces.Piece;
+import com.erland.chess.model.pieces.King;
 import com.erland.chess.network.GameServer;
 import com.erland.chess.network.GameClient;
 import com.erland.chess.network.NetworkHandler;
@@ -29,6 +30,7 @@ public class BoardPanel extends JPanel {
     JPanel controlPanel;
     JLabel turnLabel;
     JLabel statusLabel;
+    JLabel checkLabel;
     JButton btnSurrender;
     JButton btnCancel;
     JButton btnMenu;
@@ -83,6 +85,14 @@ public class BoardPanel extends JPanel {
         turnLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         controlPanel.add(turnLabel);
         controlPanel.add(Box.createVerticalStrut(10));
+        
+        // Check indicator
+        checkLabel = new JLabel("", SwingConstants.CENTER);
+        checkLabel.setFont(new Font("Arial", Font.BOLD, 16));
+        checkLabel.setForeground(Color.RED);
+        checkLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        controlPanel.add(checkLabel);
+        controlPanel.add(Box.createVerticalStrut(5));
         
         // Status
         statusLabel = new JLabel("Playing", SwingConstants.CENTER);
@@ -205,6 +215,7 @@ public class BoardPanel extends JPanel {
                 
                 updateMoveLog();
                 updateTurnLabel();
+                updateCheckStatus();
                 statusLabel.setText("Move executed");
                 statusLabel.setForeground(Color.GREEN);
                 
@@ -224,6 +235,7 @@ public class BoardPanel extends JPanel {
                         gameReviewer.recordMove(board);
                         updateMoveLog();
                         updateTurnLabel();
+                        updateCheckStatus();
                         checkGameEnd();
                         repaint();
                     });
@@ -250,6 +262,7 @@ public class BoardPanel extends JPanel {
                     gameReviewer.recordMove(board);
                     updateMoveLog();
                     updateTurnLabel();
+                    updateCheckStatus();
                     checkGameEnd();
                     repaint();
                 }
@@ -260,6 +273,18 @@ public class BoardPanel extends JPanel {
     private void updateTurnLabel() {
         turnLabel.setText("Turn: " + (board.isWhiteTurn ? "White" : "Black"));
         btnCancel.setEnabled(board.canCancelGame());
+    }
+    
+    private void updateCheckStatus() {
+        if (board.whiteInCheck) {
+            checkLabel.setText("⚠ WHITE IN CHECK! ⚠");
+            checkLabel.setForeground(new Color(255, 100, 100));
+        } else if (board.blackInCheck) {
+            checkLabel.setText("⚠ BLACK IN CHECK! ⚠");
+            checkLabel.setForeground(new Color(255, 100, 100));
+        } else {
+            checkLabel.setText("");
+        }
     }
     
     private void updateMoveLog() {
@@ -331,11 +356,11 @@ public class BoardPanel extends JPanel {
             
             switch(board.gameState) {
                 case WHITE_WON:
-                    result = "♔ White Wins! ♔";
+                    result = board.blackInCheck ? "♔ CHECKMATE - White Wins! ♔" : "♔ White Wins! ♔";
                     resultColor = new Color(135, 206, 250);
                     break;
                 case BLACK_WON:
-                    result = "♚ Black Wins! ♚";
+                    result = board.whiteInCheck ? "♚ CHECKMATE - Black Wins! ♚" : "♚ Black Wins! ♚";
                     resultColor = new Color(255, 105, 180);
                     break;
                 case STALEMATE:
@@ -350,6 +375,7 @@ public class BoardPanel extends JPanel {
             
             statusLabel.setText(result);
             statusLabel.setForeground(resultColor);
+            checkLabel.setText("");
             
             if(board.gameState != GameState.CANCELLED) {
                 Timer timer = new Timer(1500, e -> showReviewDialog());
@@ -434,6 +460,16 @@ public class BoardPanel extends JPanel {
                 }
                 g2.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
                 
+                // Highlight king in check
+                Piece p = board.getPiece(c, r);
+                if (p instanceof King) {
+                    boolean inCheck = p.isWhite ? board.whiteInCheck : board.blackInCheck;
+                    if (inCheck) {
+                        g2.setColor(new Color(255, 0, 0, 120));
+                        g2.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
+                    }
+                }
+                
                 // Highlight selected piece
                 if (board.selectedPiece != null && 
                     board.selectedPiece.col == c && board.selectedPiece.row == r) {
@@ -484,11 +520,11 @@ public class BoardPanel extends JPanel {
             
             switch(board.gameState) {
                 case WHITE_WON: 
-                    text = "WHITE WINS!";
+                    text = board.blackInCheck ? "CHECKMATE!" : "WHITE WINS!";
                     textColor = new Color(135, 206, 250);
                     break;
                 case BLACK_WON: 
-                    text = "BLACK WINS!";
+                    text = board.whiteInCheck ? "CHECKMATE!" : "BLACK WINS!";
                     textColor = new Color(255, 105, 180);
                     break;
                 case STALEMATE: 
