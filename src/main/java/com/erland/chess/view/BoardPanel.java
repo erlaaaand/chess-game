@@ -209,7 +209,30 @@ public class BoardPanel extends JPanel {
                 repaint();
             }
         } else {
+            Piece pieceToMove = board.selectedPiece;
             if(board.movePiece(col, row)) {
+            // --- FITUR PROMOSI ---
+            // Cek apakah yang bergerak adalah Pion dan mencapai baris akhir
+                if (pieceToMove instanceof com.erland.chess.model.pieces.Pawn && (row == 0 || row == 7)) {
+                    
+                    // Pilihan untuk user
+                    String[] options = {"Queen", "Rook", "Bishop", "Knight"};
+                    int choice = JOptionPane.showOptionDialog(this,
+                        "Promote Pawn to:",
+                        "Pawn Promotion",
+                        JOptionPane.DEFAULT_OPTION,
+                        JOptionPane.QUESTION_MESSAGE,
+                        new ImageIcon(getClass().getResource("/images/w_queen.png")), // Ikon opsional
+                        options,
+                        options[0]); // Default Queen
+                    
+                    String selectedPiece = (choice >= 0) ? options[choice] : "Queen";
+                    
+                    // Lakukan promosi di Board
+                    board.promotePawn(col, row, selectedPiece);
+                }
+                // ---------------------
+
                 // Update live analysis
                 gameReviewer.recordMove(board);
                 
@@ -224,9 +247,10 @@ public class BoardPanel extends JPanel {
                     networkHandler.sendMove(board.moveHistory.get(board.moveHistory.size() - 1));
                 }
                 
-                // Computer move
+                // Computer move logic (tidak berubah, hanya dipicu)
                 if(gameMode == GameMode.VS_COMPUTER && !board.isWhiteTurn && 
-                   board.gameState == GameState.PLAYING) {
+                board.gameState == GameState.PLAYING) {
+                    // ... (kode timer komputer tetap sama) ...
                     statusLabel.setText("Computer thinking...");
                     statusLabel.setForeground(Color.ORANGE);
                     
@@ -259,6 +283,14 @@ public class BoardPanel extends JPanel {
             if(p != null) {
                 board.selectedPiece = p;
                 if(board.movePiece(move.toCol, move.toRow)) {
+                    
+                    // --- MENANGANI PROMOSI DARI LAWAN ---
+                    if (move.promotionPiece != null) {
+                        board.promotePawn(move.toCol, move.toRow, move.promotionPiece);
+                        System.out.println("Opponent promoted to: " + move.promotionPiece);
+                    }
+                    // ------------------------------------
+
                     gameReviewer.recordMove(board);
                     updateMoveLog();
                     updateTurnLabel();
@@ -479,6 +511,10 @@ public class BoardPanel extends JPanel {
                 
                 // Show valid moves for selected piece
                 if (board.selectedPiece != null && board.selectedPiece.canMove(c, r)) {
+                    if (board.wouldBeInCheckAfterMove(board.selectedPiece, c, r)) {
+                        continue; // Lewati (jangan gambar) jika ini langkah bunuh diri
+                    }
+                    
                     Piece target = board.getPiece(c, r);
                     if(target != null) {
                         // Red circle for capture
