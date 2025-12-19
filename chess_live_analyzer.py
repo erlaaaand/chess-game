@@ -31,9 +31,10 @@ class LiveChessAnalyzer:
         print("="*70)
         print("CHESS LIVE ANALYZER - STARTED")
         print("="*70)
-        print(f"Monitoring directory: {bridge_dir}")
+        print(f"Monitoring directory: {os.path.abspath(bridge_dir)}")
         print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("Waiting for games to start...")
+        print("Press Ctrl+C to stop")
         print("="*70)
         print()
     
@@ -70,8 +71,13 @@ class LiveChessAnalyzer:
                 full_path = os.path.join(self.bridge_dir, latest_file)
                 
                 # Load game data
-                with open(full_path, 'r') as f:
-                    game_data = json.load(f)
+                try:
+                    with open(full_path, 'r', encoding='utf-8') as f:
+                        game_data = json.load(f)
+                except json.JSONDecodeError:
+                    # File might be being written, skip this iteration
+                    time.sleep(0.5)
+                    continue
                 
                 # Check if this is a new game
                 if current_file != latest_file:
@@ -80,7 +86,8 @@ class LiveChessAnalyzer:
                     self.on_new_game(game_data)
                 
                 # Check for new moves
-                current_moves = len(game_data.get('moves', []))
+                moves = game_data.get('moves', [])
+                current_moves = len(moves)
                 if current_moves > last_move_count:
                     # Analyze new moves
                     for i in range(last_move_count, current_moves):
@@ -88,7 +95,8 @@ class LiveChessAnalyzer:
                     last_move_count = current_moves
                 
                 # Check if game ended
-                if game_data.get('result') not in ['PLAYING', None]:
+                result = game_data.get('result', 'PLAYING')
+                if result not in ['PLAYING', None, '']:
                     self.on_game_end(game_data)
                     current_file = None
                     last_move_count = 0
@@ -103,6 +111,7 @@ class LiveChessAnalyzer:
         """Called when a new game starts"""
         self.current_game = game_data
         self.move_count = 0
+        self.analysis_history.clear()
         
         print("\n" + "="*70)
         print(f"🎮 NEW GAME STARTED")
@@ -120,10 +129,10 @@ class LiveChessAnalyzer:
         
         move = moves[move_index]
         move_num = move_index + 1
-        color = move['color']
-        piece = move['piece']
-        from_sq = move['from']
-        to_sq = move['to']
+        color = move.get('color', 'unknown')
+        piece = move.get('piece', 'Unknown')
+        from_sq = move.get('from', '??')
+        to_sq = move.get('to', '??')
         captured = move.get('captured')
         
         # Perform analysis
@@ -158,19 +167,23 @@ class LiveChessAnalyzer:
         }
         
         # Extract move details
-        piece = move['piece']
-        from_sq = move['from']
-        to_sq = move['to']
+        piece = move.get('piece', 'Unknown')
+        from_sq = move.get('from', '??')
+        to_sq = move.get('to', '??')
         captured = move.get('captured')
-        color = move['color']
+        color = move.get('color', 'unknown')
         
         # Opening moves evaluation (first 10 moves)
         if move_index < 10:
-            analysis.update(self.evaluate_opening(move, move_index))
+            opening_eval = self.evaluate_opening(move, move_index)
+            analysis['score'] += opening_eval['score'] - 0.5
+            analysis['reasons'].extend(opening_eval['reasons'])
         
         # Capture evaluation
         if captured:
-            analysis.update(self.evaluate_capture(move, captured))
+            capture_eval = self.evaluate_capture(move, captured)
+            analysis['score'] += capture_eval['score'] - 0.5
+            analysis['reasons'].extend(capture_eval['reasons'])
         
         # Piece development
         if piece in ['Knight', 'Bishop'] and move_index < 15:
@@ -213,8 +226,8 @@ class LiveChessAnalyzer:
     def evaluate_opening(self, move, move_index):
         """Evaluate opening principles"""
         result = {'score': 0.5, 'reasons': []}
-        piece = move['piece']
-        to_sq = move['to']
+        piece = move.get('piece', 'Unknown')
+        to_sq = move.get('to', '??')
         
         # Good opening principles
         if move_index == 0 and piece == 'Pawn' and to_sq in ['e4', 'd4', 'e5', 'd5']:
@@ -250,7 +263,7 @@ class LiveChessAnalyzer:
             'Rook': 5, 'Queen': 9, 'King': 0
         }
         
-        capturing_piece = move['piece']
+        capturing_piece = move.get('piece', 'Unknown')
         
         if capturing_piece in values and captured in values:
             trade_value = values[captured] - values[capturing_piece]
@@ -280,11 +293,12 @@ class LiveChessAnalyzer:
         
         # Moving same piece twice in opening
         if move_index < 10:
-            if move['piece'] == prev_move['piece'] and move['color'] == prev_move['color']:
+            if (move.get('piece') == prev_move.get('piece') and 
+                move.get('color') == prev_move.get('color')):
                 mistakes.append("⚠️ Moving same piece twice in opening")
         
         # Exposed king
-        if move['piece'] == 'King' and move['to'] in ['e4', 'd4', 'e5', 'd5']:
+        if move.get('piece') == 'King' and move.get('to') in ['e4', 'd4', 'e5', 'd5']:
             mistakes.append("⚠️ King too exposed in center!")
         
         return mistakes
@@ -295,19 +309,25 @@ class LiveChessAnalyzer:
         moves = game_data.get('moves', [])
         move = moves[move_index]
         
+        piece = move.get('piece', 'Unknown')
+        
         # Check for fork potential (knight moves)
-        if move['piece'] == 'Knight':
+        if piece == 'Knight':
             tactics.append("Knight active - fork potential")
         
         # Check for pin potential (bishop/rook/queen on lines)
-        if move['piece'] in ['Bishop', 'Rook', 'Queen']:
+        if piece in ['Bishop', 'Rook', 'Queen']:
             tactics.append("Long-range piece - pin potential")
         
         # Discovered attack potential
         if move_index > 0:
             prev_move = moves[move_index - 1]
-            if prev_move['from'][0] == move['from'][0] or prev_move['from'][1] == move['from'][1]:
-                tactics.append("Possible discovered attack")
+            prev_from = prev_move.get('from', '??')
+            curr_from = move.get('from', '??')
+            
+            if len(prev_from) == 2 and len(curr_from) == 2:
+                if prev_from[0] == curr_from[0] or prev_from[1] == curr_from[1]:
+                    tactics.append("Possible discovered attack")
         
         return tactics
     
@@ -326,7 +346,7 @@ class LiveChessAnalyzer:
         
         symbol, comment, color = displays.get(eval_type, ('·', 'Normal', '\033[90m'))
         
-        # Add reasons
+        # Add reasons (max 2)
         if analysis['reasons']:
             comment += f" - {', '.join(analysis['reasons'][:2])}"
         
@@ -339,14 +359,16 @@ class LiveChessAnalyzer:
         print("="*70)
         
         result = game_data.get('result', 'UNKNOWN')
-        total_moves = len(game_data.get('moves', []))
+        moves = game_data.get('moves', [])
+        total_moves = len(moves)
         
         print(f"Result: {result}")
         print(f"Total Moves: {total_moves}")
         print(f"Time: {datetime.now().strftime('%H:%M:%S')}")
         
         # Generate game summary
-        self.generate_game_summary(game_data)
+        if self.analysis_history:
+            self.generate_game_summary(game_data)
         
         print("="*70)
         print("\nWaiting for next game...")
@@ -366,10 +388,13 @@ class LiveChessAnalyzer:
         black_stats = move_types.copy()
         
         for analysis_data in self.analysis_history:
-            if analysis_data['move']['color'] == 'white':
-                white_stats[analysis_data['analysis']['type']] += 1
+            move_color = analysis_data['move'].get('color', 'unknown')
+            move_type = analysis_data['analysis']['type']
+            
+            if move_color == 'white':
+                white_stats[move_type] += 1
             else:
-                black_stats[analysis_data['analysis']['type']] += 1
+                black_stats[move_type] += 1
         
         print("\n📊 GAME SUMMARY:")
         print("-" * 70)
@@ -388,6 +413,7 @@ class LiveChessAnalyzer:
         """Print player statistics"""
         total = sum(stats.values())
         if total == 0:
+            print("  No moves recorded")
             return
         
         print(f"  💎 Brilliant moves: {stats['brilliant']}")
@@ -411,7 +437,11 @@ class LiveChessAnalyzer:
             print("  Best moves:")
             for item in brilliant[:3]:
                 m = item['move']
-                print(f"    Move {item['move_num']}: {m['color']} {m['piece']} {m['from']}→{m['to']}")
+                color = m.get('color', 'unknown')
+                piece = m.get('piece', 'Unknown')
+                from_sq = m.get('from', '??')
+                to_sq = m.get('to', '??')
+                print(f"    Move {item['move_num']}: {color} {piece} {from_sq}→{to_sq}")
         
         # Find blunders
         blunders = [a for a in self.analysis_history if a['analysis']['type'] == 'blunder']
@@ -419,15 +449,24 @@ class LiveChessAnalyzer:
             print("  Critical mistakes:")
             for item in blunders[:3]:
                 m = item['move']
-                print(f"    Move {item['move_num']}: {m['color']} {m['piece']} {m['from']}→{m['to']}")
+                color = m.get('color', 'unknown')
+                piece = m.get('piece', 'Unknown')
+                from_sq = m.get('from', '??')
+                to_sq = m.get('to', '??')
+                print(f"    Move {item['move_num']}: {color} {piece} {from_sq}→{to_sq}")
 
 def main():
+    print("Chess Live Analyzer v1.0")
     analyzer = LiveChessAnalyzer()
     
     try:
         analyzer.start()
     except KeyboardInterrupt:
         print("\n\nAnalyzer stopped.")
+    except Exception as e:
+        print(f"\n\nError: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()
