@@ -16,13 +16,14 @@ import java.awt.event.MouseEvent;
 public class BoardPanel extends JPanel {
     final int tileSize = 85;
     final int boardSize = tileSize * 8;
-    final int panelWidth = boardSize + 250; // Extra space for controls
+    final int panelWidth = boardSize + 250;
     
     Board board = new Board();
     GameMode gameMode;
     NetworkHandler networkHandler;
     boolean isHost;
     JFrame parentFrame;
+    GameReviewer gameReviewer;
     
     // UI Components
     JPanel controlPanel;
@@ -37,6 +38,7 @@ public class BoardPanel extends JPanel {
         this.parentFrame = frame;
         this.gameMode = mode;
         this.isHost = isHost;
+        this.gameReviewer = new GameReviewer();
         
         if(network instanceof GameServer) {
             this.networkHandler = (GameServer)network;
@@ -54,6 +56,10 @@ public class BoardPanel extends JPanel {
         if(networkHandler != null) {
             networkHandler.setBoardPanel(this);
         }
+        
+        // Start live game review
+        gameReviewer.startNewGame();
+        System.out.println("Live game analysis started!");
     }
     
     private void setupControlPanel() {
@@ -61,6 +67,14 @@ public class BoardPanel extends JPanel {
         controlPanel.setBounds(boardSize + 10, 0, 230, boardSize);
         controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
         controlPanel.setBackground(new Color(50, 50, 50));
+        
+        // Title
+        JLabel titleLabel = new JLabel("CHESS GAME", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("Arial", Font.BOLD, 20));
+        titleLabel.setForeground(new Color(255, 215, 0));
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        controlPanel.add(titleLabel);
+        controlPanel.add(Box.createVerticalStrut(15));
         
         // Turn indicator
         turnLabel = new JLabel("Turn: White", SwingConstants.CENTER);
@@ -98,9 +112,11 @@ public class BoardPanel extends JPanel {
         
         // Move log
         JLabel logLabel = new JLabel("Move History:", SwingConstants.CENTER);
+        logLabel.setFont(new Font("Arial", Font.BOLD, 14));
         logLabel.setForeground(Color.WHITE);
         logLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         controlPanel.add(logLabel);
+        controlPanel.add(Box.createVerticalStrut(5));
         
         moveLog = new JTextArea(15, 20);
         moveLog.setEditable(false);
@@ -109,6 +125,7 @@ public class BoardPanel extends JPanel {
         moveLog.setForeground(Color.WHITE);
         JScrollPane scrollPane = new JScrollPane(moveLog);
         scrollPane.setMaximumSize(new Dimension(220, 300));
+        scrollPane.setAlignmentX(Component.CENTER_ALIGNMENT);
         controlPanel.add(scrollPane);
         
         add(controlPanel);
@@ -121,6 +138,18 @@ public class BoardPanel extends JPanel {
         btn.setBackground(new Color(70, 130, 180));
         btn.setForeground(Color.WHITE);
         btn.setFocusPainted(false);
+        btn.setFont(new Font("Arial", Font.BOLD, 12));
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        
+        btn.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) {
+                btn.setBackground(new Color(100, 150, 200));
+            }
+            public void mouseExited(MouseEvent e) {
+                btn.setBackground(new Color(70, 130, 180));
+            }
+        });
+        
         return btn;
     }
     
@@ -128,12 +157,16 @@ public class BoardPanel extends JPanel {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                if(board.gameState != GameState.PLAYING) return;
+                if(board.gameState != GameState.PLAYING) {
+                    return;
+                }
                 
                 int col = e.getX() / tileSize;
                 int row = e.getY() / tileSize;
                 
-                if(col >= 8 || row >= 8) return;
+                if(col >= 8 || row >= 8 || col < 0 || row < 0) {
+                    return;
+                }
                 
                 // Network game restrictions
                 if(gameMode == GameMode.NETWORK) {
@@ -146,64 +179,82 @@ public class BoardPanel extends JPanel {
                 
                 // Computer game restriction
                 if(gameMode == GameMode.VS_COMPUTER && !board.isWhiteTurn) {
+                    statusLabel.setText("Computer is thinking...");
+                    statusLabel.setForeground(Color.ORANGE);
                     return;
                 }
                 
-                if (board.selectedPiece == null) {
-                    Piece p = board.getPiece(col, row);
-                    if (p != null && p.isWhite == board.isWhiteTurn) {
-                        board.selectedPiece = p;
-                        statusLabel.setText("Selected: " + p.name);
-                        statusLabel.setForeground(Color.YELLOW);
-                    }
-                } else {
-                    if(board.movePiece(col, row)) {
-                        updateMoveLog();
-                        updateTurnLabel();
-                        statusLabel.setText("Move executed");
-                        statusLabel.setForeground(Color.GREEN);
-                        
-                        // Send move via network
-                        if(networkHandler != null) {
-                            networkHandler.sendMove(board.moveHistory.get(board.moveHistory.size()-1));
-                        }
-                        
-                        // Computer move
-                        if(gameMode == GameMode.VS_COMPUTER && !board.isWhiteTurn && 
-                           board.gameState == GameState.PLAYING) {
-                            Timer timer = new Timer(500, evt -> {
-                                board.performComputerMove();
-                                updateMoveLog();
-                                updateTurnLabel();
-                                checkGameEnd();
-                                repaint();
-                            });
-                            timer.setRepeats(false);
-                            timer.start();
-                        }
-                        
-                        checkGameEnd();
-                    } else {
-                        board.selectedPiece = null;
-                        statusLabel.setText("Invalid move");
-                        statusLabel.setForeground(Color.RED);
-                    }
-                }
-                repaint();
+                handlePieceSelection(col, row);
             }
         });
     }
     
-    public void receiveMove(Board.Move move) {
-        Piece p = board.getPiece(move.fromCol, move.fromRow);
-        if(p != null) {
-            board.selectedPiece = p;
-            board.movePiece(move.toCol, move.toRow);
-            updateMoveLog();
-            updateTurnLabel();
-            checkGameEnd();
+    private void handlePieceSelection(int col, int row) {
+        if (board.selectedPiece == null) {
+            Piece p = board.getPiece(col, row);
+            if (p != null && p.isWhite == board.isWhiteTurn) {
+                board.selectedPiece = p;
+                statusLabel.setText("Selected: " + p.name);
+                statusLabel.setForeground(Color.YELLOW);
+                repaint();
+            }
+        } else {
+            if(board.movePiece(col, row)) {
+                // Update live analysis
+                gameReviewer.recordMove(board);
+                
+                updateMoveLog();
+                updateTurnLabel();
+                statusLabel.setText("Move executed");
+                statusLabel.setForeground(Color.GREEN);
+                
+                // Send move via network
+                if(networkHandler != null && !board.moveHistory.isEmpty()) {
+                    networkHandler.sendMove(board.moveHistory.get(board.moveHistory.size() - 1));
+                }
+                
+                // Computer move
+                if(gameMode == GameMode.VS_COMPUTER && !board.isWhiteTurn && 
+                   board.gameState == GameState.PLAYING) {
+                    statusLabel.setText("Computer thinking...");
+                    statusLabel.setForeground(Color.ORANGE);
+                    
+                    Timer timer = new Timer(800, evt -> {
+                        board.performComputerMove();
+                        gameReviewer.recordMove(board);
+                        updateMoveLog();
+                        updateTurnLabel();
+                        checkGameEnd();
+                        repaint();
+                    });
+                    timer.setRepeats(false);
+                    timer.start();
+                }
+                
+                checkGameEnd();
+            } else {
+                board.selectedPiece = null;
+                statusLabel.setText("Invalid move!");
+                statusLabel.setForeground(Color.RED);
+            }
             repaint();
         }
+    }
+    
+    public void receiveMove(Board.Move move) {
+        SwingUtilities.invokeLater(() -> {
+            Piece p = board.getPiece(move.fromCol, move.fromRow);
+            if(p != null) {
+                board.selectedPiece = p;
+                if(board.movePiece(move.toCol, move.toRow)) {
+                    gameReviewer.recordMove(board);
+                    updateMoveLog();
+                    updateTurnLabel();
+                    checkGameEnd();
+                    repaint();
+                }
+            }
+        });
     }
     
     private void updateTurnLabel() {
@@ -215,10 +266,12 @@ public class BoardPanel extends JPanel {
         StringBuilder log = new StringBuilder();
         for(int i = 0; i < board.moveHistory.size(); i++) {
             if(i % 2 == 0) {
-                log.append((i/2 + 1)).append(". ");
+                log.append(String.format("%2d. ", (i/2 + 1)));
             }
             log.append(board.moveHistory.get(i).toNotation()).append(" ");
-            if(i % 2 == 1) log.append("\n");
+            if(i % 2 == 1) {
+                log.append("\n");
+            }
         }
         moveLog.setText(log.toString());
         moveLog.setCaretPosition(moveLog.getDocument().getLength());
@@ -226,8 +279,10 @@ public class BoardPanel extends JPanel {
     
     private void surrender() {
         int confirm = JOptionPane.showConfirmDialog(this, 
-            "Are you sure you want to surrender?", "Surrender", 
-            JOptionPane.YES_NO_OPTION);
+            "Are you sure you want to surrender?", 
+            "Surrender Confirmation", 
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE);
         
         if(confirm == JOptionPane.YES_OPTION) {
             boolean whiteResigns = (gameMode == GameMode.NETWORK) ? isHost : board.isWhiteTurn;
@@ -245,13 +300,15 @@ public class BoardPanel extends JPanel {
     private void cancelGame() {
         if(!board.canCancelGame()) {
             JOptionPane.showMessageDialog(this, 
-                "Cannot cancel after first move!", "Error", 
+                "Cannot cancel game after the first move!", 
+                "Cancel Error", 
                 JOptionPane.ERROR_MESSAGE);
             return;
         }
         
         int confirm = JOptionPane.showConfirmDialog(this, 
-            "Cancel this game?", "Cancel Game", 
+            "Cancel this game?", 
+            "Cancel Game", 
             JOptionPane.YES_NO_OPTION);
         
         if(confirm == JOptionPane.YES_OPTION) {
@@ -270,29 +327,32 @@ public class BoardPanel extends JPanel {
             btnCancel.setEnabled(false);
             
             String result = "";
+            Color resultColor = Color.WHITE;
+            
             switch(board.gameState) {
                 case WHITE_WON:
-                    result = "White Wins!";
-                    statusLabel.setForeground(Color.CYAN);
+                    result = "♔ White Wins! ♔";
+                    resultColor = new Color(135, 206, 250);
                     break;
                 case BLACK_WON:
-                    result = "Black Wins!";
-                    statusLabel.setForeground(Color.MAGENTA);
+                    result = "♚ Black Wins! ♚";
+                    resultColor = new Color(255, 105, 180);
                     break;
                 case STALEMATE:
-                    result = "Stalemate - Draw!";
-                    statusLabel.setForeground(Color.YELLOW);
+                    result = "Draw - Stalemate!";
+                    resultColor = Color.YELLOW;
                     break;
                 case CANCELLED:
                     result = "Game Cancelled";
-                    statusLabel.setForeground(Color.GRAY);
+                    resultColor = Color.GRAY;
                     break;
             }
             
             statusLabel.setText(result);
+            statusLabel.setForeground(resultColor);
             
             if(board.gameState != GameState.CANCELLED) {
-                Timer timer = new Timer(1000, e -> showReviewDialog());
+                Timer timer = new Timer(1500, e -> showReviewDialog());
                 timer.setRepeats(false);
                 timer.start();
             }
@@ -301,34 +361,50 @@ public class BoardPanel extends JPanel {
     
     private void showReviewDialog() {
         int option = JOptionPane.showConfirmDialog(this,
-            "Game finished! Would you like to save a review?",
-            "Game Review", JOptionPane.YES_NO_OPTION);
+            "Game finished! Would you like to add a review comment?",
+            "Game Review", 
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.QUESTION_MESSAGE);
         
         if(option == JOptionPane.YES_OPTION) {
             String comment = JOptionPane.showInputDialog(this,
-                "Enter your review/comments:", "Game Review",
+                "Enter your review/comments about this game:",
+                "Game Review",
                 JOptionPane.PLAIN_MESSAGE);
             
             if(comment != null && !comment.trim().isEmpty()) {
-                GameReviewer reviewer = new GameReviewer();
-                boolean saved = reviewer.saveReview(board, comment);
+                boolean saved = gameReviewer.finalizeGame(board, comment);
                 
                 if(saved) {
                     JOptionPane.showMessageDialog(this,
-                        "Review saved successfully!\nYou can analyze it with Python scripts.",
-                        "Success", JOptionPane.INFORMATION_MESSAGE);
+                        "✓ Review saved successfully!\n\n" +
+                        "Game data has been saved for analysis.\n" +
+                        "You can analyze it using Python scripts:\n" +
+                        "- chess_analyzer.py (batch analysis)\n" +
+                        "- chess_live_analyzer.py (real-time)\n" +
+                        "- chess_ml_analyzer.py (advanced)",
+                        "Success", 
+                        JOptionPane.INFORMATION_MESSAGE);
                 } else {
                     JOptionPane.showMessageDialog(this,
                         "Failed to save review!",
-                        "Error", JOptionPane.ERROR_MESSAGE);
+                        "Error", 
+                        JOptionPane.ERROR_MESSAGE);
                 }
             }
+        } else {
+            // Save without comment
+            gameReviewer.finalizeGame(board, "No comment provided");
         }
     }
     
     private void backToMenu() {
         if(networkHandler != null) {
-            networkHandler.close();
+            try {
+                networkHandler.close();
+            } catch (Exception e) {
+                System.err.println("Error closing network connection: " + e.getMessage());
+            }
         }
         
         parentFrame.getContentPane().removeAll();
@@ -342,10 +418,15 @@ public class BoardPanel extends JPanel {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
+        
+        // Enable antialiasing for better graphics
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-        // Draw board
+        // Draw board tiles
         for (int c = 0; c < 8; c++) {
             for (int r = 0; r < 8; r++) {
+                // Alternate colors
                 if ((c + r) % 2 == 0) {
                     g2.setColor(new Color(235, 235, 208));
                 } else {
@@ -356,25 +437,38 @@ public class BoardPanel extends JPanel {
                 // Highlight selected piece
                 if (board.selectedPiece != null && 
                     board.selectedPiece.col == c && board.selectedPiece.row == r) {
-                    g2.setColor(new Color(255, 255, 0, 100));
+                    g2.setColor(new Color(255, 255, 0, 120));
                     g2.fillRect(c * tileSize, r * tileSize, tileSize, tileSize);
                 }
                 
-                // Show valid moves
+                // Show valid moves for selected piece
                 if (board.selectedPiece != null && board.selectedPiece.canMove(c, r)) {
-                    g2.setColor(new Color(0, 255, 0, 80));
-                    g2.fillOval(c * tileSize + tileSize/3, r * tileSize + tileSize/3, 
-                               tileSize/3, tileSize/3);
+                    Piece target = board.getPiece(c, r);
+                    if(target != null) {
+                        // Red circle for capture
+                        g2.setColor(new Color(255, 0, 0, 100));
+                        g2.fillOval(c * tileSize + tileSize/4, r * tileSize + tileSize/4, 
+                                   tileSize/2, tileSize/2);
+                    } else {
+                        // Green dot for regular move
+                        g2.setColor(new Color(0, 255, 0, 100));
+                        g2.fillOval(c * tileSize + tileSize/3, r * tileSize + tileSize/3, 
+                                   tileSize/3, tileSize/3);
+                    }
                 }
             }
         }
         
         // Draw coordinates
-        g2.setColor(Color.WHITE);
-        g2.setFont(new Font("Arial", Font.PLAIN, 12));
+        g2.setColor(new Color(80, 80, 80));
+        g2.setFont(new Font("Arial", Font.BOLD, 12));
         for(int i = 0; i < 8; i++) {
-            g2.drawString(String.valueOf((char)('a' + i)), i * tileSize + 5, boardSize - 5);
-            g2.drawString(String.valueOf(8 - i), 5, i * tileSize + 15);
+            // Files (a-h)
+            g2.drawString(String.valueOf((char)('a' + i)), 
+                         i * tileSize + tileSize - 15, boardSize - 5);
+            // Ranks (1-8)
+            g2.drawString(String.valueOf(8 - i), 
+                         5, i * tileSize + 15);
         }
 
         // Draw pieces
@@ -382,21 +476,39 @@ public class BoardPanel extends JPanel {
         
         // Game over overlay
         if(board.gameState != GameState.PLAYING && board.gameState != GameState.CANCELLED) {
-            g2.setColor(new Color(0, 0, 0, 150));
+            g2.setColor(new Color(0, 0, 0, 180));
             g2.fillRect(0, 0, boardSize, boardSize);
             
-            g2.setColor(Color.WHITE);
-            g2.setFont(new Font("Arial", Font.BOLD, 48));
             String text = "";
+            Color textColor = Color.WHITE;
+            
             switch(board.gameState) {
-                case WHITE_WON: text = "WHITE WINS!"; break;
-                case BLACK_WON: text = "BLACK WINS!"; break;
-                case STALEMATE: text = "STALEMATE!"; break;
+                case WHITE_WON: 
+                    text = "WHITE WINS!";
+                    textColor = new Color(135, 206, 250);
+                    break;
+                case BLACK_WON: 
+                    text = "BLACK WINS!";
+                    textColor = new Color(255, 105, 180);
+                    break;
+                case STALEMATE: 
+                    text = "STALEMATE!";
+                    textColor = Color.YELLOW;
+                    break;
             }
             
+            g2.setColor(textColor);
+            g2.setFont(new Font("Arial", Font.BOLD, 52));
             FontMetrics fm = g2.getFontMetrics();
             int x = (boardSize - fm.stringWidth(text)) / 2;
             int y = boardSize / 2;
+            
+            // Draw text shadow
+            g2.setColor(Color.BLACK);
+            g2.drawString(text, x + 3, y + 3);
+            
+            // Draw main text
+            g2.setColor(textColor);
             g2.drawString(text, x, y);
         }
     }
