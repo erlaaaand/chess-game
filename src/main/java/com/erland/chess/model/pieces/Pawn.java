@@ -11,27 +11,37 @@ public class Pawn extends Piece {
     }
 
     public boolean isValidMovement(int newCol, int newRow) {
-        int colorIndex = isWhite ? 1 : -1;
+        int direction = isWhite ? -1 : 1;
 
-        // Gerak 1 langkah ke depan (y naik untuk hitam, turun untuk putih jika 0 di atas)
-        // Di Java Swing, 0,0 biasanya kiri atas. Jadi Putih (bawah) row-nya berkurang.
-        // Asumsi: Putih di Row 6/7 (Bawah), Hitam di Row 0/1 (Atas).
-        // Putih gerak KE ATAS (Row makin KECIL), Hitam KE BAWAH (Row makin BESAR)
-        int direction = isWhite ? -1 : 1; 
-
-        // Gerak lurus 1 kotak
+        // Move forward 1 square
         if (newCol == col && newRow == row + direction && board.getPiece(newCol, newRow) == null) {
             return true;
         }
 
-        // Gerak lurus 2 kotak (Awal saja)
-        if (newCol == col && newRow == row + direction * 2 && board.getPiece(newCol, newRow) == null && board.getPiece(newCol, newRow - direction) == null) {
-            if ((isWhite && row == 6) || (!isWhite && row == 1)) return true;
+        // Move forward 2 squares from starting position
+        if (newCol == col && newRow == row + direction * 2 && board.getPiece(newCol, newRow) == null && 
+            board.getPiece(newCol, newRow - direction) == null) {
+            if ((isWhite && row == 6) || (!isWhite && row == 1)) {
+                return true;
+            }
         }
 
-        // Makan Miring (Capture)
-        if (Math.abs(newCol - col) == 1 && newRow == row + direction && board.getPiece(newCol, newRow) != null) {
-            return true;
+        // Capture diagonally
+        if (Math.abs(newCol - col) == 1 && newRow == row + direction) {
+            Piece target = board.getPiece(newCol, newRow);
+            if (target != null && target.isWhite != isWhite) {
+                return true;
+            }
+            
+            // En passant
+            if (target == null && board.enPassantPawn != null) {
+                if (board.enPassantPawn.col == newCol && board.enPassantPawn.row == row) {
+                    // Check if en passant pawn is adjacent and moved 2 squares last turn
+                    if (Math.abs(board.enPassantPawn.col - col) == 1) {
+                        return true;
+                    }
+                }
+            }
         }
 
         return false;
