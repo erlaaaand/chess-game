@@ -172,6 +172,49 @@ public class Board {
         return false;
     }
 
+    public void promotePawn(int col, int row, String type) {
+        Piece pawn = getPiece(col, row);
+        if (pawn == null) return;
+        
+        boolean isWhite = pawn.isWhite;
+        Piece newPiece = null;
+        
+        // Buat perwira baru sesuai pilihan
+        switch (type) {
+            case "Queen":
+                newPiece = new Queen(this, col, row, isWhite);
+                break;
+            case "Rook":
+                newPiece = new Rook(this, col, row, isWhite);
+                break;
+            case "Bishop":
+                newPiece = new Bishop(this, col, row, isWhite);
+                break;
+            case "Knight":
+                newPiece = new Knight(this, col, row, isWhite);
+                break;
+            default:
+                newPiece = new Queen(this, col, row, isWhite); // Default ke Queen
+                break;
+        }
+        
+        if (newPiece != null) {
+            // Ganti pion dengan perwira baru
+            pieceList[col][row] = newPiece;
+            newPiece.hasMoved = true;
+            
+            // Update history move terakhir untuk mencatat promosi ini
+            // (Penting agar saat dikirim via jaringan, lawan tahu ini promosi apa)
+            if (!moveHistory.isEmpty()) {
+                moveHistory.get(moveHistory.size() - 1).promotionPiece = type;
+            }
+            
+            // Cek skak lagi karena perwira baru mungkin menyebabkan skak
+            updateCheckStatus();
+            checkGameState();
+        }
+    }
+
     public void performComputerMove() {
         if(gameState != GameState.PLAYING) {
             return;
@@ -223,34 +266,58 @@ public class Board {
             captureMoves.get(rand.nextInt(captureMoves.size()));
         
         Piece p = getPiece(chosenMove[0], chosenMove[1]);
-        if(p != null) {
-            selectedPiece = p;
-            movePiece(chosenMove[2], chosenMove[3]);
-            System.out.println("Computer moved: " + p.name + " from " + 
-                             (char)('a' + chosenMove[0]) + (8 - chosenMove[1]) + 
-                             " to " + (char)('a' + chosenMove[2]) + (8 - chosenMove[3]));
-        }
+            if(p != null) {
+                selectedPiece = p;
+                boolean moved = movePiece(chosenMove[2], chosenMove[3]);
+                
+                // LOGIKA PROMOSI KOMPUTER
+                if (moved && p instanceof Pawn) {
+                    int destRow = chosenMove[3];
+                    // Jika pion hitam sampai baris 7 (bawah) atau pion putih sampai baris 0 (atas)
+                    if (destRow == 0 || destRow == 7) {
+                        promotePawn(chosenMove[2], destRow, "Queen");
+                        System.out.println("Computer promoted Pawn to Queen!");
+                    }
+                }
+
+                System.out.println("Computer moved: " + p.name + " from " + 
+                                (char)('a' + chosenMove[0]) + (8 - chosenMove[1]) + 
+                                " to " + (char)('a' + chosenMove[2]) + (8 - chosenMove[3]));
+            }
     }
     
     public boolean isKingInCheck(boolean isWhite) {
         King king = isWhite ? whiteKing : blackKing;
-        if(king == null) {
-            return false;
+        if (king == null || pieceList[king.col][king.row] != king) {
+            findKings();
+            king = isWhite ? whiteKing : blackKing;
         }
+
+        if (king == null) return false;
         
         // Check if any enemy piece can capture the king
-        for(int c = 0; c < 8; c++) {
-            for(int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+            for (int r = 0; r < 8; r++) {
                 Piece p = getPiece(c, r);
-                if(p != null && p.isWhite != isWhite) {
-                    // For pawns, check diagonal attacks only
-                    if(p instanceof Pawn) {
+                
+                // Jika ada bidak lawan
+                if (p != null && p.isWhite != isWhite) {
+                    
+                    // Khusus Pion (serangan diagonal)
+                    if (p instanceof Pawn) {
                         int direction = p.isWhite ? -1 : 1;
-                        if(Math.abs(king.col - p.col) == 1 && king.row == p.row + direction) {
+                        // Cek serangan pion ke kiri dan kanan diagonal
+                        if (king.row == p.row + direction && 
+                        (Math.abs(king.col - p.col) == 1)) {
                             return true;
                         }
-                    } else if(p.isValidMovement(king.col, king.row)) {
-                        return true;
+                    }
+                    // Untuk perwira lain (Bishop, Rook, Queen, Knight, King)
+                    else {
+                        // Cek apakah bidak p BISA memakan Raja di posisinya sekarang
+                        if (p.isValidMovement(king.col, king.row)) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -258,7 +325,7 @@ public class Board {
         return false;
     }
     
-    private boolean wouldBeInCheckAfterMove(Piece piece, int newCol, int newRow) {
+    public boolean wouldBeInCheckAfterMove(Piece piece, int newCol, int newRow) {
         // Simulate move
         int oldCol = piece.col;
         int oldRow = piece.row;
@@ -375,6 +442,7 @@ public class Board {
         public boolean isCastling = false;
         public int castlingRookOldCol = -1;
         public int castlingRookNewCol = -1;
+        public String promotionPiece = null;
         
         public Move(Piece piece, int fromCol, int fromRow, int toCol, int toRow, Piece captured) {
             this.piece = piece;
