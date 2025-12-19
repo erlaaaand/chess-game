@@ -12,10 +12,13 @@ public class Bishop extends Piece {
         if (Math.abs(newCol - col) == Math.abs(newRow - row)) {
             int colStep = (newCol > col) ? 1 : -1;
             int rowStep = (newRow > row) ? 1 : -1;
+            
             for (int i = 1; i < Math.abs(newCol - col); i++) {
-                if (board.getPiece(col + i * colStep, row + i * rowStep) != null) return false;
+                if (board.getPiece(col + i * colStep, row + i * rowStep) != null) {
+                    return false; // Ada halangan
+                }
             }
-            return true;
+            return true; // Jalur bersih
         }
         return false;
     }
