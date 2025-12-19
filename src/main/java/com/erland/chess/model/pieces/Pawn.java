@@ -9,7 +9,6 @@ public class Pawn extends Piece {
         this.row = row; 
         this.isWhite = isWhite;
         this.name = "Pawn";
-        // Hapus loadImage();
     }
 
     @Override
