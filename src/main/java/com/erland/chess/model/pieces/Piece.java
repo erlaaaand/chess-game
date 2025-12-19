@@ -10,35 +10,44 @@ public abstract class Piece {
     public int col, row;
     public boolean isWhite;
     public String name;
-    protected Board board; // Tambahan penting!
+    public boolean hasMoved = false;
+    protected Board board;
     private BufferedImage image;
 
     public Piece(Board board) {
         this.board = board;
     }
 
-    // Load gambar otomatis sesuai nama dan warna
     public void loadImage() {
+        String path = "/images/" + (isWhite ? "w_" : "b_") + name.toLowerCase() + ".png";
         try {
-            String path = "/images/" + (isWhite ? "w_" : "b_") + name.toLowerCase() + ".png";
-            image = ImageIO.read(getClass().getResourceAsStream(path));
+            var stream = getClass().getResourceAsStream(path);
+            if (stream == null) {
+                throw new IOException("Image not found: " + path);
+            }
+            image = ImageIO.read(stream);
         } catch (IOException e) {
+            System.err.println("Failed to load image: " + path);
             e.printStackTrace();
         }
     }
 
     public void draw(Graphics2D g2, int panelSize) {
-        int tileSize = panelSize / 8;
-        g2.drawImage(image, col * tileSize, row * tileSize, tileSize, tileSize, null);
+        if(image != null) {
+            int tileSize = panelSize / 8;
+            g2.drawImage(image, col * tileSize, row * tileSize, tileSize, tileSize, null);
+        }
     }
 
     public boolean isWhite() { return isWhite; }
 
-    // Validasi dasar (batas papan & tidak makan teman)
     public boolean canMove(int targetCol, int targetRow) {
         if(targetCol < 0 || targetCol > 7 || targetRow < 0 || targetRow > 7) return false;
+        if(targetCol == col && targetRow == row) return false;
+        
         Piece target = board.getPiece(targetCol, targetRow);
-        if(target != null && target.isWhite == this.isWhite) return false; // Tabrak teman
+        if(target != null && target.isWhite == this.isWhite) return false;
+        
         return isValidMovement(targetCol, targetRow);
     }
 
