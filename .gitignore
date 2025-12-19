@@ -1,0 +1,58 @@
+# Compiled class files
+*.class
+target/
+
+# Log files
+*.log
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.eclipse/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Game data
+game_reviews/*.pgn
+python_bridge/*.json
+python_bridge/*.flag
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Analysis outputs
+*.png
+analysis_report_*.txt
+
+# Keep directory structure
+!game_reviews/.gitkeep
+!python_bridge/.gitkeep
