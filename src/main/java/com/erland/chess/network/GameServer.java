@@ -2,6 +2,7 @@ package com.erland.chess.network;
 
 import com.erland.chess.model.Board;
 import com.erland.chess.view.BoardView;
+import com.google.gson.Gson;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
 
@@ -12,10 +13,11 @@ public class GameServer implements NetworkHandler {
     private int port;
     private ServerSocket serverSocket;
     private Socket clientSocket;
-    private ObjectOutputStream out;
-    private ObjectInputStream in;
+    private PrintWriter out;
+    private BufferedReader in;
     private BoardView boardPanel;
     private boolean running = false;
+    private final Gson gson = new Gson();
 
     public GameServer(int port) {
         this.port = port;
@@ -31,8 +33,9 @@ public class GameServer implements NetworkHandler {
             clientSocket = serverSocket.accept();
             System.out.println("Client connected: " + clientSocket.getInetAddress());
             
-            out = new ObjectOutputStream(clientSocket.getOutputStream());
-            in = new ObjectInputStream(clientSocket.getInputStream());
+            // Setup Text Streams
+            out = new PrintWriter(clientSocket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
             
             // Start listening thread
             new Thread(this::listenForMessages).start();
@@ -45,9 +48,12 @@ public class GameServer implements NetworkHandler {
     private void listenForMessages() {
         while (running && clientSocket != null && !clientSocket.isClosed()) {
             try {
-                NetworkMessage msg = (NetworkMessage) in.readObject();
+                String json = in.readLine();
+                if (json == null) break;
+                
+                NetworkMessage msg = gson.fromJson(json, NetworkMessage.class);
                 handleMessage(msg);
-            } catch (IOException | ClassNotFoundException e) {
+            } catch (IOException e) {
                 System.out.println("Connection lost");
                 running = false;
                 break;
@@ -56,6 +62,8 @@ public class GameServer implements NetworkHandler {
     }
 
     private void handleMessage(NetworkMessage msg) {
+        if (msg == null) return;
+        
         switch (msg.type) {
             case MOVE:
                 if (boardPanel != null) {
@@ -88,40 +96,25 @@ public class GameServer implements NetworkHandler {
     @Override
     public void sendMove(Board.Move move) {
         if (out != null) {
-            try {
-                NetworkMessage msg = new NetworkMessage(NetworkMessage.MessageType.MOVE);
-                msg.move = move;
-                out.writeObject(msg);
-                out.flush();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            NetworkMessage msg = new NetworkMessage(NetworkMessage.MessageType.MOVE);
+            msg.move = move;
+            out.println(gson.toJson(msg));
         }
     }
 
     @Override
     public void sendSurrender() {
         if (out != null) {
-            try {
-                NetworkMessage msg = new NetworkMessage(NetworkMessage.MessageType.SURRENDER);
-                out.writeObject(msg);
-                out.flush();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            NetworkMessage msg = new NetworkMessage(NetworkMessage.MessageType.SURRENDER);
+            out.println(gson.toJson(msg));
         }
     }
 
     @Override
     public void sendCancel() {
         if (out != null) {
-            try {
-                NetworkMessage msg = new NetworkMessage(NetworkMessage.MessageType.CANCEL);
-                out.writeObject(msg);
-                out.flush();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            NetworkMessage msg = new NetworkMessage(NetworkMessage.MessageType.CANCEL);
+            out.println(gson.toJson(msg));
         }
     }
 

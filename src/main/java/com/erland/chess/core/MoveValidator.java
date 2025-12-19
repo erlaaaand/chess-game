@@ -18,22 +18,27 @@ public class MoveValidator {
      * Validate if a move is legal
      */
     public ValidationResult validate(Piece piece, int toCol, int toRow) {
-        // Check bounds
+        // 1. Check bounds
         if (!isValidSquare(toCol, toRow)) {
             return ValidationResult.invalid("Move out of bounds");
         }
         
-        // Check if same position
+        // 2. Check if same position
         if (piece.col == toCol && piece.row == toRow) {
             return ValidationResult.invalid("Cannot move to same square");
         }
         
-        // Check piece movement rules
+        // 3. Check turn (Opsional, biasanya dihandle di Engine, tapi bagus ada double check)
+        if (piece.isWhite != board.isWhiteTurn) {
+             return ValidationResult.invalid("Not your turn!");
+        }
+
+        // 4. Check piece specific movement rules
         if (!piece.canMove(toCol, toRow)) {
-            return ValidationResult.invalid("Invalid move for this piece");
+            return ValidationResult.invalid("Invalid move pattern for " + piece.name);
         }
         
-        // Check if would leave king in check
+        // 5. Check if would leave king in check (Crucial Rule)
         if (board.wouldBeInCheckAfterMove(piece, toCol, toRow)) {
             return ValidationResult.invalid("Move would leave king in check");
         }

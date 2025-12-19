@@ -10,8 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Core game engine - handles all game logic
- * Single Responsibility: Game rules and state management
+ * Core game engine - handles all game logic flow
  */
 public class GameEngine {
     private final Board board;
@@ -19,118 +18,71 @@ public class GameEngine {
     private final MoveValidator moveValidator;
     private final GameEventPublisher eventPublisher;
     
-    public GameEngine(GameEventPublisher eventPublisher) {
-        this.board = new Board();
+    // Kita butuh akses ke board yang sama dengan yang dipakai View
+    public GameEngine(Board board) {
+        this.board = board;
         this.stateManager = new GameStateManager(board);
         this.moveValidator = new MoveValidator(board);
-        this.eventPublisher = eventPublisher;
+        this.eventPublisher = new GameEventPublisher(); // Internal publisher
     }
     
     /**
-     * Execute a move with full validation
+     * Execute a move with full validation and state updates
      */
     public MoveResult executeMove(Piece piece, int toCol, int toRow) {
-        // Validate
+        // 1. Validate
         ValidationResult validation = moveValidator.validate(piece, toCol, toRow);
         if (!validation.isValid()) {
             return MoveResult.failed(validation.getReason());
         }
         
-        // Execute
-        Move move = createMove(piece, toCol, toRow);
+        // 2. Cek Promosi sebelum eksekusi (untuk UI handling)
+        // Kita butuh tahu apakah ini gerakan pawn ke ujung
+        boolean isPawnPromotion = piece.name.equals("Pawn") && (toRow == 0 || toRow == 7);
+        if (isPawnPromotion) {
+            // Kita kembalikan status butuh promosi, move BELUM dieksekusi di board
+            // UI harus minta input user, lalu panggil promotePawn()
+            // Namun, untuk menyederhanakan flow, kita bisa buat objek move sementara
+            Move pendingMove = new Move(piece, piece.col, piece.row, toCol, toRow, board.getPiece(toCol, toRow));
+            return MoveResult.needsPromotion(pendingMove);
+        }
+
+        // 3. Execute Move di Board
+        // Catatan: Pastikan Board.movePiece() Anda hanya mengupdate posisi array & koordinat,
+        // logika turn switching dll sebaiknya di sini, tapi untuk kompatibilitas dengan Board yang lama
+        // kita biarkan Board melakukan hal dasarnya.
         boolean executed = board.movePiece(toCol, toRow);
         
         if (!executed) {
-            return MoveResult.failed("Move execution failed");
+            return MoveResult.failed("Engine execution failed");
         }
         
-        // Update state
-        stateManager.afterMove(move);
+        // Ambil move object yang baru saja dibuat di history Board
+        Move lastMove = board.moveHistory.get(board.moveHistory.size() - 1);
         
-        // Publish event
-        eventPublisher.publishMoveExecuted(move);
+        // 4. Update Game State (Check, Checkmate, Stalemate) handled by Board/GameStateManager internally
+        // Tapi kita bisa paksa refresh state di sini jika perlu
+        stateManager.afterMove(lastMove);
         
-        // Check for special conditions
-        if (isPromotionNeeded(move)) {
-            return MoveResult.needsPromotion(move);
-        }
+        // 5. Publish Event (Opsional, jika UI listen ke engine)
+        eventPublisher.publishMoveExecuted(lastMove);
         
-        if (stateManager.isGameOver()) {
-            eventPublisher.publishGameOver(stateManager.getGameState());
-        }
-        
-        return MoveResult.success(move);
+        return MoveResult.success(lastMove);
     }
     
     /**
-     * Get all legal moves for a piece
-     */
-    public List<Move> getLegalMoves(Piece piece) {
-        List<Move> legalMoves = new ArrayList<>();
-        
-        for (int col = 0; col < 8; col++) {
-            for (int row = 0; row < 8; row++) {
-                if (moveValidator.validate(piece, col, row).isValid()) {
-                    legalMoves.add(new Move(piece, piece.col, piece.row, col, row, 
-                                           board.getPiece(col, row)));
-                }
-            }
-        }
-        
-        return legalMoves;
-    }
-    
-    /**
-     * Promote pawn
+     * Handle Pawn Promotion execution
      */
     public void promotePawn(int col, int row, String pieceType) {
         board.promotePawn(col, row, pieceType);
         stateManager.afterPromotion();
-        eventPublisher.publishPromotion(col, row, pieceType);
     }
-    
-    /**
-     * Undo last move
-     */
-    public Optional<Move> undoLastMove() {
-        return stateManager.undoLastMove();
-    }
-    
-    /**
-     * Surrender current player
-     */
-    public void surrender(boolean whiteResigns) {
-        board.surrender(whiteResigns);
-        eventPublisher.publishGameOver(board.gameState);
-    }
-    
-    // Helper methods
-    
-    private Move createMove(Piece piece, int toCol, int toRow) {
-        return new Move(piece, piece.col, piece.row, toCol, toRow, 
-                       board.getPiece(toCol, toRow));
-    }
-    
-    private boolean isPromotionNeeded(Move move) {
-        Piece piece = move.piece;
-        return piece.name.equals("Pawn") && (move.toRow == 0 || move.toRow == 7);
-    }
-    
-    // Getters
     
     public Board getBoard() {
         return board;
     }
     
-    public GameState getGameState() {
-        return board.gameState;
-    }
-    
-    public boolean isWhiteTurn() {
-        return board.isWhiteTurn;
-    }
-    
-    public List<Move> getMoveHistory() {
-        return new ArrayList<>(board.moveHistory);
+    public GameEventPublisher getEventPublisher() {
+        return eventPublisher;
     }
 }

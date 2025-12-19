@@ -1,9 +1,7 @@
 package com.erland.chess.model;
 
 import com.erland.chess.model.pieces.*;
-import java.awt.Graphics2D;
 import java.util.ArrayList;
-import java.util.Random;
 import java.util.List;
 
 public class Board {
@@ -179,112 +177,26 @@ public class Board {
         boolean isWhite = pawn.isWhite;
         Piece newPiece = null;
         
-        // Buat perwira baru sesuai pilihan
         switch (type) {
-            case "Queen":
-                newPiece = new Queen(this, col, row, isWhite);
-                break;
-            case "Rook":
-                newPiece = new Rook(this, col, row, isWhite);
-                break;
-            case "Bishop":
-                newPiece = new Bishop(this, col, row, isWhite);
-                break;
-            case "Knight":
-                newPiece = new Knight(this, col, row, isWhite);
-                break;
-            default:
-                newPiece = new Queen(this, col, row, isWhite); // Default ke Queen
-                break;
+            case "Queen": newPiece = new Queen(this, col, row, isWhite); break;
+            case "Rook": newPiece = new Rook(this, col, row, isWhite); break;
+            case "Bishop": newPiece = new Bishop(this, col, row, isWhite); break;
+            case "Knight": newPiece = new Knight(this, col, row, isWhite); break;
+            default: newPiece = new Queen(this, col, row, isWhite); break;
         }
         
         if (newPiece != null) {
-            // Ganti pion dengan perwira baru
             pieceList[col][row] = newPiece;
             newPiece.hasMoved = true;
-            
-            // Update history move terakhir untuk mencatat promosi ini
-            // (Penting agar saat dikirim via jaringan, lawan tahu ini promosi apa)
             if (!moveHistory.isEmpty()) {
                 moveHistory.get(moveHistory.size() - 1).promotionPiece = type;
             }
-            
-            // Cek skak lagi karena perwira baru mungkin menyebabkan skak
             updateCheckStatus();
             checkGameState();
         }
     }
-
-    public void performComputerMove() {
-        if(gameState != GameState.PLAYING) {
-            return;
-        }
-        
-        System.out.println("Computer is thinking...");
-        
-        // Collect all black pieces
-        List<Piece> blackPieces = new ArrayList<>();
-        for(int c = 0; c < 8; c++) {
-            for(int r = 0; r < 8; r++) {
-                Piece p = getPiece(c, r);
-                if(p != null && !p.isWhite) {
-                    blackPieces.add(p);
-                }
-            }
-        }
-
-        // Collect all valid moves that don't leave king in check
-        List<int[]> validMoves = new ArrayList<>();
-        for(Piece p : blackPieces) {
-            for(int c = 0; c < 8; c++) {
-                for(int r = 0; r < 8; r++) {
-                    if(p.canMove(c, r) && !wouldBeInCheckAfterMove(p, c, r)) {
-                        validMoves.add(new int[]{p.col, p.row, c, r});
-                    }
-                }
-            }
-        }
-        
-        if(validMoves.isEmpty()) {
-            System.out.println("Computer has no valid moves!");
-            return;
-        }
-        
-        // Prioritize captures
-        List<int[]> captureMoves = new ArrayList<>();
-        for(int[] move : validMoves) {
-            Piece target = getPiece(move[2], move[3]);
-            if(target != null || (getPiece(move[0], move[1]) instanceof Pawn && 
-                move[2] != move[0] && target == null && enPassantPawn != null)) {
-                captureMoves.add(move);
-            }
-        }
-        
-        Random rand = new Random();
-        int[] chosenMove = captureMoves.isEmpty() ? 
-            validMoves.get(rand.nextInt(validMoves.size())) :
-            captureMoves.get(rand.nextInt(captureMoves.size()));
-        
-        Piece p = getPiece(chosenMove[0], chosenMove[1]);
-            if(p != null) {
-                selectedPiece = p;
-                boolean moved = movePiece(chosenMove[2], chosenMove[3]);
-                
-                // LOGIKA PROMOSI KOMPUTER
-                if (moved && p instanceof Pawn) {
-                    int destRow = chosenMove[3];
-                    // Jika pion hitam sampai baris 7 (bawah) atau pion putih sampai baris 0 (atas)
-                    if (destRow == 0 || destRow == 7) {
-                        promotePawn(chosenMove[2], destRow, "Queen");
-                        System.out.println("Computer promoted Pawn to Queen!");
-                    }
-                }
-
-                System.out.println("Computer moved: " + p.name + " from " + 
-                                (char)('a' + chosenMove[0]) + (8 - chosenMove[1]) + 
-                                " to " + (char)('a' + chosenMove[2]) + (8 - chosenMove[3]));
-            }
-    }
+    
+    // NOTE: performComputerMove DIHAPUS. Logika AI dipindahkan ke AIPlayer.java
     
     public boolean isKingInCheck(boolean isWhite) {
         King king = isWhite ? whiteKing : blackKing;
@@ -295,26 +207,16 @@ public class Board {
 
         if (king == null) return false;
         
-        // Check if any enemy piece can capture the king
         for (int c = 0; c < 8; c++) {
             for (int r = 0; r < 8; r++) {
                 Piece p = getPiece(c, r);
-                
-                // Jika ada bidak lawan
                 if (p != null && p.isWhite != isWhite) {
-                    
-                    // Khusus Pion (serangan diagonal)
                     if (p instanceof Pawn) {
                         int direction = p.isWhite ? -1 : 1;
-                        // Cek serangan pion ke kiri dan kanan diagonal
-                        if (king.row == p.row + direction && 
-                        (Math.abs(king.col - p.col) == 1)) {
+                        if (king.row == p.row + direction && (Math.abs(king.col - p.col) == 1)) {
                             return true;
                         }
-                    }
-                    // Untuk perwira lain (Bishop, Rook, Queen, Knight, King)
-                    else {
-                        // Cek apakah bidak p BISA memakan Raja di posisinya sekarang
+                    } else {
                         if (p.isValidMovement(king.col, king.row)) {
                             return true;
                         }
@@ -332,7 +234,6 @@ public class Board {
         Piece capturedPiece = getPiece(newCol, newRow);
         Piece enPassantCaptured = null;
         
-        // Handle en passant
         if (piece instanceof Pawn && newCol != oldCol && capturedPiece == null) {
             if (enPassantPawn != null && enPassantPawn.col == newCol) {
                 enPassantCaptured = enPassantPawn;
@@ -363,13 +264,6 @@ public class Board {
     private void updateCheckStatus() {
         whiteInCheck = isKingInCheck(true);
         blackInCheck = isKingInCheck(false);
-        
-        if (whiteInCheck) {
-            System.out.println("White King is in CHECK!");
-        }
-        if (blackInCheck) {
-            System.out.println("Black King is in CHECK!");
-        }
     }
     
     private void checkGameState() {
@@ -378,10 +272,8 @@ public class Board {
         
         if(inCheck && !hasValidMove) {
             gameState = isWhiteTurn ? GameState.BLACK_WON : GameState.WHITE_WON;
-            System.out.println("CHECKMATE! " + (isWhiteTurn ? "Black" : "White") + " wins!");
         } else if(!inCheck && !hasValidMove) {
             gameState = GameState.STALEMATE;
-            System.out.println("STALEMATE - Game is a draw!");
         }
     }
     
@@ -405,74 +297,9 @@ public class Board {
     
     public void surrender(boolean whiteResigns) {
         gameState = whiteResigns ? GameState.BLACK_WON : GameState.WHITE_WON;
-        System.out.println((whiteResigns ? "White" : "Black") + " resigned from the game!");
     }
     
     public boolean canCancelGame() {
         return totalMoves <= 1;
-    }
-
-    public void draw(Graphics2D g2, int size) {
-        int tileSize = size / 8;
-        for (int c = 0; c < cols; c++) {
-            for (int r = 0; r < rows; r++) {
-                Piece p = pieceList[c][r];
-                if (p != null) {
-                    p.draw(g2, size);
-                }
-            }
-        }
-    }
-    
-    public enum GameState {
-        PLAYING, WHITE_WON, BLACK_WON, STALEMATE, CANCELLED
-    }
-    
-    public static class Move implements java.io.Serializable {
-        private static final long serialVersionUID = 1L;
-        
-        public transient Piece piece;
-        public String pieceName;
-        public boolean pieceIsWhite;
-        public int fromCol, fromRow, toCol, toRow;
-        public transient Piece capturedPiece;
-        public String capturedPieceName;
-        public long timestamp;
-        public boolean isEnPassant = false;
-        public boolean isCastling = false;
-        public int castlingRookOldCol = -1;
-        public int castlingRookNewCol = -1;
-        public String promotionPiece = null;
-        
-        public Move(Piece piece, int fromCol, int fromRow, int toCol, int toRow, Piece captured) {
-            this.piece = piece;
-            this.pieceName = piece.name;
-            this.pieceIsWhite = piece.isWhite;
-            this.fromCol = fromCol;
-            this.fromRow = fromRow;
-            this.toCol = toCol;
-            this.toRow = toRow;
-            this.capturedPiece = captured;
-            this.capturedPieceName = captured != null ? captured.name : null;
-            this.timestamp = System.currentTimeMillis();
-        }
-        
-        public String toNotation() {
-            String from = "" + (char)('a' + fromCol) + (8 - fromRow);
-            String to = "" + (char)('a' + toCol) + (8 - toRow);
-            
-            if (isCastling) {
-                return toCol == 6 ? "O-O" : "O-O-O"; // Kingside or Queenside
-            }
-            
-            String capture = capturedPieceName != null || isEnPassant ? "x" : "-";
-            String notation = pieceName.charAt(0) + from + capture + to;
-            
-            if (isEnPassant) {
-                notation += " e.p.";
-            }
-            
-            return notation;
-        }
     }
 }

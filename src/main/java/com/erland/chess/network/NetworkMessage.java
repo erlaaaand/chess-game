@@ -1,10 +1,9 @@
 package com.erland.chess.network;
 
 import com.erland.chess.model.Board;
-import java.io.Serializable;
 
-public class NetworkMessage implements Serializable {
-    private static final long serialVersionUID = 1L;
+public class NetworkMessage {
+    // Hapus Serializable
     
     public enum MessageType {
         MOVE, SURRENDER, CANCEL

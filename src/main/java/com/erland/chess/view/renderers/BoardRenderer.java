@@ -8,13 +8,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import com.erland.chess.model.Board;
 import com.erland.chess.model.pieces.*;
+import com.erland.chess.utils.PieceImageLoader; // Import loader
 
-import java.util.HashMap;
-import java.util.Map;
-
-/**
- * Handles rendering of chess board and pieces
- */
 public class BoardRenderer {
     private static final int TILE_SIZE = 85;
     private static final int BOARD_SIZE = TILE_SIZE * 8;
@@ -23,7 +18,7 @@ public class BoardRenderer {
     private final Canvas pieceCanvas;
     private final Board board;
     
-    private final Map<String, Image> pieceImages = new HashMap<>();
+    // Hapus pieceImages Map
     private Piece draggedPiece = null;
     
     public BoardRenderer(Canvas boardCanvas, Canvas pieceCanvas, Board board) {
@@ -31,28 +26,8 @@ public class BoardRenderer {
         this.pieceCanvas = pieceCanvas;
         this.board = board;
         
-        loadPieceImages();
+        // Hapus loadPieceImages() karena sudah ditangani PieceImageLoader
         drawBoard();
-    }
-    
-    private void loadPieceImages() {
-        String[] colors = {"w", "b"};
-        String[] pieces = {"king", "queen", "rook", "bishop", "knight", "pawn"};
-        
-        for (String color : colors) {
-            for (String piece : pieces) {
-                String key = color + "_" + piece;
-                try {
-                    Image img = new Image(
-                        getClass().getResourceAsStream("/images/" + key + ".png"),
-                        TILE_SIZE - 10, TILE_SIZE - 10, true, true
-                    );
-                    pieceImages.put(key, img);
-                } catch (Exception e) {
-                    System.err.println("Failed to load image: " + key);
-                }
-            }
-        }
     }
     
     public void drawBoard() {
@@ -93,11 +68,8 @@ public class BoardRenderer {
     }
     
     private void drawPiece(GraphicsContext gc, Piece piece, int col, int row) {
-        String color = piece.isWhite ? "w" : "b";
-        String pieceName = piece.name.toLowerCase();
-        String key = color + "_" + pieceName;
-        
-        Image img = pieceImages.get(key);
+        // Gunakan PieceImageLoader untuk mendapatkan gambar
+        Image img = PieceImageLoader.getInstance().getImage(piece.isWhite, piece.name);
         
         if (img != null) {
             double x = col * TILE_SIZE + 5;
@@ -126,19 +98,12 @@ public class BoardRenderer {
     private String getPieceSymbol(Piece piece) {
         String symbol = "";
         
-        if (piece instanceof King) {
-            symbol = "♔";
-        } else if (piece instanceof Queen) {
-            symbol = "♕";
-        } else if (piece instanceof Rook) {
-            symbol = "♖";
-        } else if (piece instanceof Bishop) {
-            symbol = "♗";
-        } else if (piece instanceof Knight) {
-            symbol = "♘";
-        } else if (piece instanceof Pawn) {
-            symbol = "♙";
-        }
+        if (piece instanceof King) symbol = "♔";
+        else if (piece instanceof Queen) symbol = "♕";
+        else if (piece instanceof Rook) symbol = "♖";
+        else if (piece instanceof Bishop) symbol = "♗";
+        else if (piece instanceof Knight) symbol = "♘";
+        else if (piece instanceof Pawn) symbol = "♙";
         
         return piece.isWhite ? symbol : symbol.toLowerCase();
     }
@@ -147,9 +112,7 @@ public class BoardRenderer {
         this.draggedPiece = piece;
     }
     
-    public Map<String, Image> getPieceImages() {
-        return pieceImages;
-    }
+    // Hapus getPieceImages() karena sudah tidak relevan
     
     public static int getTileSize() {
         return TILE_SIZE;

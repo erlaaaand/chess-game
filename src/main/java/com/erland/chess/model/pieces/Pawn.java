@@ -5,11 +5,14 @@ import com.erland.chess.model.Board;
 public class Pawn extends Piece {
     public Pawn(Board board, int col, int row, boolean isWhite) {
         super(board);
-        this.col = col; this.row = row; this.isWhite = isWhite;
+        this.col = col; 
+        this.row = row; 
+        this.isWhite = isWhite;
         this.name = "Pawn";
-        loadImage();
+        // Hapus loadImage();
     }
 
+    @Override
     public boolean isValidMovement(int newCol, int newRow) {
         int direction = isWhite ? -1 : 1;
 
@@ -36,7 +39,6 @@ public class Pawn extends Piece {
             // En passant
             if (target == null && board.enPassantPawn != null) {
                 if (board.enPassantPawn.col == newCol && board.enPassantPawn.row == row) {
-                    // Check if en passant pawn is adjacent and moved 2 squares last turn
                     if (Math.abs(board.enPassantPawn.col - col) == 1) {
                         return true;
                     }
