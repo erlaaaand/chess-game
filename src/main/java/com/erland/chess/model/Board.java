@@ -21,6 +21,13 @@ public class Board {
     private King whiteKing;
     private King blackKing;
     
+    // En passant tracking
+    public Pawn enPassantPawn = null;
+    
+    // Check status
+    public boolean whiteInCheck = false;
+    public boolean blackInCheck = false;
+
     public Board() {
         addPieces();
         findKings();
@@ -82,23 +89,80 @@ public class Board {
         }
         
         if (selectedPiece.canMove(newCol, newRow)) {
-            // Record move
+            // Check if move would leave king in check
+            if (wouldBeInCheckAfterMove(selectedPiece, newCol, newRow)) {
+                return false;
+            }
+            
+            // Record move details
             Piece captured = pieceList[newCol][newRow];
-            Move move = new Move(selectedPiece, selectedPiece.col, selectedPiece.row, 
-                                newCol, newRow, captured);
+            int oldCol = selectedPiece.col;
+            int oldRow = selectedPiece.row;
+            boolean isEnPassant = false;
+            boolean isCastling = false;
+            Piece castlingRook = null;
+            int rookOldCol = -1;
+            int rookNewCol = -1;
+            
+            // Check for en passant capture
+            if (selectedPiece instanceof Pawn && newCol != oldCol && captured == null) {
+                if (enPassantPawn != null && enPassantPawn.col == newCol) {
+                    captured = enPassantPawn;
+                    pieceList[enPassantPawn.col][enPassantPawn.row] = null;
+                    isEnPassant = true;
+                }
+            }
+            
+            // Check for castling
+            if (selectedPiece instanceof King && Math.abs(newCol - oldCol) == 2) {
+                isCastling = true;
+                if (newCol == 6) { // Kingside castling
+                    castlingRook = getPiece(7, oldRow);
+                    rookOldCol = 7;
+                    rookNewCol = 5;
+                } else if (newCol == 2) { // Queenside castling
+                    castlingRook = getPiece(0, oldRow);
+                    rookOldCol = 0;
+                    rookNewCol = 3;
+                }
+                
+                if (castlingRook != null) {
+                    pieceList[rookOldCol][oldRow] = null;
+                    pieceList[rookNewCol][oldRow] = castlingRook;
+                    castlingRook.col = rookNewCol;
+                    castlingRook.hasMoved = true;
+                }
+            }
             
             // Execute move
-            pieceList[selectedPiece.col][selectedPiece.row] = null;
+            pieceList[oldCol][oldRow] = null;
             pieceList[newCol][newRow] = selectedPiece;
             selectedPiece.col = newCol;
             selectedPiece.row = newRow;
             selectedPiece.hasMoved = true;
+            
+            // Reset en passant if not a pawn double move
+            Pawn newEnPassantPawn = null;
+            if (selectedPiece instanceof Pawn && Math.abs(newRow - oldRow) == 2) {
+                newEnPassantPawn = (Pawn) selectedPiece;
+            }
+            enPassantPawn = newEnPassantPawn;
+            
+            // Create move record
+            Move move = new Move(selectedPiece, oldCol, oldRow, newCol, newRow, captured);
+            move.isEnPassant = isEnPassant;
+            move.isCastling = isCastling;
+            if (isCastling) {
+                move.castlingRookOldCol = rookOldCol;
+                move.castlingRookNewCol = rookNewCol;
+            }
             
             moveHistory.add(move);
             totalMoves++;
             
             // Switch turn and check game state
             isWhiteTurn = !isWhiteTurn;
+            updateCheckStatus();
             checkGameState();
             
             selectedPiece = null;
@@ -126,12 +190,12 @@ public class Board {
             }
         }
 
-        // Collect all valid moves
+        // Collect all valid moves that don't leave king in check
         List<int[]> validMoves = new ArrayList<>();
         for(Piece p : blackPieces) {
             for(int c = 0; c < 8; c++) {
                 for(int r = 0; r < 8; r++) {
-                    if(p.canMove(c, r)) {
+                    if(p.canMove(c, r) && !wouldBeInCheckAfterMove(p, c, r)) {
                         validMoves.add(new int[]{p.col, p.row, c, r});
                     }
                 }
@@ -146,7 +210,9 @@ public class Board {
         // Prioritize captures
         List<int[]> captureMoves = new ArrayList<>();
         for(int[] move : validMoves) {
-            if(getPiece(move[2], move[3]) != null) {
+            Piece target = getPiece(move[2], move[3]);
+            if(target != null || (getPiece(move[0], move[1]) instanceof Pawn && 
+                move[2] != move[0] && target == null && enPassantPawn != null)) {
                 captureMoves.add(move);
             }
         }
@@ -177,13 +243,66 @@ public class Board {
             for(int r = 0; r < 8; r++) {
                 Piece p = getPiece(c, r);
                 if(p != null && p.isWhite != isWhite) {
-                    if(p.canMove(king.col, king.row)) {
+                    // For pawns, check diagonal attacks only
+                    if(p instanceof Pawn) {
+                        int direction = p.isWhite ? -1 : 1;
+                        if(Math.abs(king.col - p.col) == 1 && king.row == p.row + direction) {
+                            return true;
+                        }
+                    } else if(p.isValidMovement(king.col, king.row)) {
                         return true;
                     }
                 }
             }
         }
         return false;
+    }
+    
+    private boolean wouldBeInCheckAfterMove(Piece piece, int newCol, int newRow) {
+        // Simulate move
+        int oldCol = piece.col;
+        int oldRow = piece.row;
+        Piece capturedPiece = getPiece(newCol, newRow);
+        Piece enPassantCaptured = null;
+        
+        // Handle en passant
+        if (piece instanceof Pawn && newCol != oldCol && capturedPiece == null) {
+            if (enPassantPawn != null && enPassantPawn.col == newCol) {
+                enPassantCaptured = enPassantPawn;
+                pieceList[enPassantPawn.col][enPassantPawn.row] = null;
+            }
+        }
+        
+        pieceList[oldCol][oldRow] = null;
+        pieceList[newCol][newRow] = piece;
+        piece.col = newCol;
+        piece.row = newRow;
+        
+        boolean inCheck = isKingInCheck(piece.isWhite);
+        
+        // Undo move
+        pieceList[oldCol][oldRow] = piece;
+        pieceList[newCol][newRow] = capturedPiece;
+        piece.col = oldCol;
+        piece.row = oldRow;
+        
+        if (enPassantCaptured != null) {
+            pieceList[enPassantCaptured.col][enPassantCaptured.row] = enPassantCaptured;
+        }
+        
+        return inCheck;
+    }
+    
+    private void updateCheckStatus() {
+        whiteInCheck = isKingInCheck(true);
+        blackInCheck = isKingInCheck(false);
+        
+        if (whiteInCheck) {
+            System.out.println("White King is in CHECK!");
+        }
+        if (blackInCheck) {
+            System.out.println("Black King is in CHECK!");
+        }
     }
     
     private void checkGameState() {
@@ -206,7 +325,7 @@ public class Board {
                 if(p != null && p.isWhite == isWhite) {
                     for(int tc = 0; tc < 8; tc++) {
                         for(int tr = 0; tr < 8; tr++) {
-                            if(p.canMove(tc, tr)) {
+                            if(p.canMove(tc, tr) && !wouldBeInCheckAfterMove(p, tc, tr)) {
                                 return true;
                             }
                         }
@@ -252,6 +371,10 @@ public class Board {
         public transient Piece capturedPiece;
         public String capturedPieceName;
         public long timestamp;
+        public boolean isEnPassant = false;
+        public boolean isCastling = false;
+        public int castlingRookOldCol = -1;
+        public int castlingRookNewCol = -1;
         
         public Move(Piece piece, int fromCol, int fromRow, int toCol, int toRow, Piece captured) {
             this.piece = piece;
@@ -269,8 +392,19 @@ public class Board {
         public String toNotation() {
             String from = "" + (char)('a' + fromCol) + (8 - fromRow);
             String to = "" + (char)('a' + toCol) + (8 - toRow);
-            String capture = capturedPieceName != null ? "x" : "-";
-            return pieceName.charAt(0) + from + capture + to;
+            
+            if (isCastling) {
+                return toCol == 6 ? "O-O" : "O-O-O"; // Kingside or Queenside
+            }
+            
+            String capture = capturedPieceName != null || isEnPassant ? "x" : "-";
+            String notation = pieceName.charAt(0) + from + capture + to;
+            
+            if (isEnPassant) {
+                notation += " e.p.";
+            }
+            
+            return notation;
         }
     }
 }
