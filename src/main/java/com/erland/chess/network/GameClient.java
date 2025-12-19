@@ -1,7 +1,10 @@
 package com.erland.chess.network;
 
 import com.erland.chess.model.Board;
-import com.erland.chess.view.BoardPanel;
+import com.erland.chess.view.BoardView;
+import javafx.application.Platform;
+import javafx.scene.control.Alert;
+
 import java.io.*;
 import java.net.*;
 
@@ -11,7 +14,7 @@ public class GameClient implements NetworkHandler {
     private Socket socket;
     private ObjectOutputStream out;
     private ObjectInputStream in;
-    private BoardPanel boardPanel;
+    private BoardView boardPanel;
     private boolean running = false;
 
     public GameClient(String host, int port) {
@@ -61,17 +64,21 @@ public class GameClient implements NetworkHandler {
                 break;
             case SURRENDER:
                 if (boardPanel != null) {
-                    javax.swing.SwingUtilities.invokeLater(() -> {
-                        javax.swing.JOptionPane.showMessageDialog(boardPanel, 
-                            "Opponent surrendered!");
+                    Platform.runLater(() -> {
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Game Over");
+                        alert.setHeaderText("Opponent surrendered!");
+                        alert.showAndWait();
                     });
                 }
                 break;
             case CANCEL:
                 if (boardPanel != null) {
-                    javax.swing.SwingUtilities.invokeLater(() -> {
-                        javax.swing.JOptionPane.showMessageDialog(boardPanel, 
-                            "Game cancelled by opponent!");
+                    Platform.runLater(() -> {
+                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                        alert.setTitle("Game Cancelled");
+                        alert.setHeaderText("Game cancelled by opponent!");
+                        alert.showAndWait();
                     });
                 }
                 break;
@@ -119,7 +126,7 @@ public class GameClient implements NetworkHandler {
     }
 
     @Override
-    public void setBoardPanel(BoardPanel panel) {
+    public void setBoardPanel(BoardView panel) {
         this.boardPanel = panel;
     }
 
