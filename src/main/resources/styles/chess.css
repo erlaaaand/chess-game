@@ -13,7 +13,7 @@
 .menu-title {
     -fx-font-size: 72px;
     -fx-font-weight: bold;
-    -fx-text-fill: linear-gradient(to right, #ffd700, #ffed4e);
+    -fx-fill: linear-gradient(to right, #ffd700, #ffed4e);
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.8), 10, 0, 0, 3);
 }
 
@@ -32,6 +32,7 @@
     -fx-background-radius: 15px;
     -fx-cursor: hand;
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 8, 0, 0, 2);
+    -fx-transition: all 0.3s;
 }
 
 .menu-button:hover {
@@ -62,32 +63,6 @@
 
 .chess-board {
     -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 20, 0, 0, 5);
-}
-
-.light-tile {
-    -fx-fill: #f0d9b5;
-}
-
-.dark-tile {
-    -fx-fill: #b58863;
-}
-
-.selected-tile {
-    -fx-fill: #f6f669;
-    -fx-effect: innershadow(gaussian, rgba(246, 246, 105, 0.8), 10, 0, 0, 0);
-}
-
-.valid-move-indicator {
-    -fx-fill: rgba(0, 255, 0, 0.4);
-}
-
-.capture-move-indicator {
-    -fx-fill: rgba(255, 0, 0, 0.4);
-}
-
-.check-highlight {
-    -fx-fill: rgba(255, 0, 0, 0.5);
-    -fx-effect: innershadow(gaussian, rgba(255, 0, 0, 0.8), 15, 0, 0, 0);
 }
 
 /* Control Panel */
@@ -131,11 +106,19 @@
     -fx-padding: 12px 25px;
     -fx-background-radius: 10px;
     -fx-cursor: hand;
+    -fx-transition: all 0.2s;
 }
 
 .game-button:hover {
     -fx-background-color: linear-gradient(to bottom, #4aa8eb, #3990c9);
     -fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.5), 8, 0, 0, 2);
+    -fx-scale-x: 1.02;
+    -fx-scale-y: 1.02;
+}
+
+.game-button:pressed {
+    -fx-scale-x: 0.98;
+    -fx-scale-y: 0.98;
 }
 
 .surrender-button {
@@ -162,47 +145,29 @@
     -fx-font-size: 14px;
     -fx-padding: 10px;
     -fx-background-radius: 8px;
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-radius: 8px;
 }
 
-.move-log .scroll-pane {
-    -fx-background-color: transparent;
+/* AI Character View */
+.ai-character-container {
+    -fx-background-color: linear-gradient(to bottom, #1a1a2e, #16213e);
 }
 
-.move-log .scroll-bar {
-    -fx-background-color: #2c3e50;
+.character-card {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-background-radius: 15px;
+    -fx-border-color: rgba(255, 255, 255, 0.1);
+    -fx-border-radius: 15px;
+    -fx-border-width: 2px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 10, 0, 0, 3);
+    -fx-transition: all 0.3s;
 }
 
-/* Dialogs */
-.dialog-pane {
-    -fx-background-color: linear-gradient(to bottom, #34495e, #2c3e50);
-}
-
-.dialog-pane .label {
-    -fx-text-fill: white;
-}
-
-.dialog-pane .button {
-    -fx-background-color: linear-gradient(to bottom, #3498db, #2980b9);
-    -fx-text-fill: white;
-    -fx-font-weight: bold;
-    -fx-padding: 10px 20px;
-    -fx-background-radius: 8px;
-}
-
-.dialog-pane .button:hover {
-    -fx-background-color: linear-gradient(to bottom, #4aa8eb, #3990c9);
-}
-
-/* Promotion Dialog */
-.promotion-piece {
-    -fx-cursor: hand;
-    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 5, 0, 0, 2);
-}
-
-.promotion-piece:hover {
-    -fx-scale-x: 1.1;
-    -fx-scale-y: 1.1;
-    -fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.8), 10, 0, 0, 3);
+.character-card:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+    -fx-border-color: rgba(255, 215, 0, 0.3);
+    -fx-effect: dropshadow(gaussian, rgba(255, 215, 0, 0.3), 15, 0, 0, 5);
 }
 
 /* Analysis View */
@@ -235,15 +200,65 @@
     -fx-text-fill: #3fc380;
 }
 
-/* Animations */
-@keyframes pulse {
-    0% { -fx-scale-x: 1; -fx-scale-y: 1; }
-    50% { -fx-scale-x: 1.05; -fx-scale-y: 1.05; }
-    100% { -fx-scale-x: 1; -fx-scale-y: 1; }
+/* Progress Bars */
+.progress-bar {
+    -fx-background-radius: 10px;
+    -fx-background-color: rgba(255, 255, 255, 0.1);
 }
 
-.pulse {
-    -fx-animation: pulse 1s infinite;
+.progress-bar .bar {
+    -fx-background-radius: 10px;
+    -fx-background-insets: 0;
+    -fx-padding: 0.5em;
+}
+
+/* Dialogs */
+.dialog-pane {
+    -fx-background-color: linear-gradient(to bottom, #34495e, #2c3e50);
+}
+
+.dialog-pane .label {
+    -fx-text-fill: white;
+}
+
+.dialog-pane .button {
+    -fx-background-color: linear-gradient(to bottom, #3498db, #2980b9);
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-padding: 10px 20px;
+    -fx-background-radius: 8px;
+}
+
+.dialog-pane .button:hover {
+    -fx-background-color: linear-gradient(to bottom, #4aa8eb, #3990c9);
+}
+
+/* Text Fields and Spinners */
+.text-field, .spinner {
+    -fx-background-color: rgba(255, 255, 255, 0.1);
+    -fx-text-fill: white;
+    -fx-prompt-text-fill: rgba(255, 255, 255, 0.5);
+    -fx-background-radius: 5px;
+    -fx-border-color: rgba(255, 255, 255, 0.2);
+    -fx-border-radius: 5px;
+}
+
+.text-field:focused, .spinner:focused {
+    -fx-border-color: #3498db;
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Promotion Dialog */
+.promotion-piece {
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 5, 0, 0, 2);
+    -fx-transition: all 0.2s;
+}
+
+.promotion-piece:hover {
+    -fx-scale-x: 1.1;
+    -fx-scale-y: 1.1;
+    -fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.8), 10, 0, 0, 3);
 }
 
 /* Coordinates */
@@ -251,6 +266,60 @@
     -fx-font-size: 14px;
     -fx-font-weight: bold;
     -fx-text-fill: #7f8c8d;
+}
+
+/* Separator */
+.separator {
+    -fx-background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Tooltips */
+.tooltip {
+    -fx-background-color: rgba(0, 0, 0, 0.9);
+    -fx-text-fill: white;
+    -fx-background-radius: 5px;
+    -fx-font-size: 12px;
+    -fx-padding: 5px 10px;
+}
+
+/* Scrollbar */
+.scroll-bar {
+    -fx-background-color: rgba(0, 0, 0, 0.2);
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.3);
+    -fx-background-radius: 5px;
+}
+
+.scroll-bar .thumb:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.5);
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+}
+
+/* Animations */
+@keyframes pulse {
+    0%, 100% { 
+        -fx-scale-x: 1; 
+        -fx-scale-y: 1; 
+    }
+    50% { 
+        -fx-scale-x: 1.05; 
+        -fx-scale-y: 1.05; 
+    }
+}
+
+@keyframes glow {
+    0%, 100% { 
+        -fx-effect: dropshadow(gaussian, rgba(255, 215, 0, 0.3), 5, 0, 0, 0); 
+    }
+    50% { 
+        -fx-effect: dropshadow(gaussian, rgba(255, 215, 0, 0.8), 15, 0, 0, 0); 
+    }
 }
 
 /* Game Over Overlay */
@@ -274,4 +343,23 @@
 
 .draw-text {
     -fx-text-fill: linear-gradient(to right, #ffd700, #ffed4e);
+}
+
+/* Loading Animation */
+.loading-spinner {
+    -fx-padding: 20px;
+}
+
+/* Chart Styles */
+.chart {
+    -fx-background-color: transparent;
+}
+
+.chart-plot-background {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+}
+
+.chart-legend {
+    -fx-background-color: rgba(0, 0, 0, 0.5);
+    -fx-text-fill: white;
 }
