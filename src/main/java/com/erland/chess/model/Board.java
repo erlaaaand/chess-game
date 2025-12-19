@@ -4,6 +4,7 @@ import com.erland.chess.model.pieces.*;
 import java.awt.Graphics2D;
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.List;
 
 public class Board {
     final int cols = 8;
@@ -26,7 +27,7 @@ public class Board {
     }
 
     public void addPieces() {
-        // Black (Top)
+        // Black pieces (Top)
         pieceList[0][0] = new Rook(this, 0, 0, false);
         pieceList[1][0] = new Knight(this, 1, 0, false);
         pieceList[2][0] = new Bishop(this, 2, 0, false);
@@ -35,9 +36,11 @@ public class Board {
         pieceList[5][0] = new Bishop(this, 5, 0, false);
         pieceList[6][0] = new Knight(this, 6, 0, false);
         pieceList[7][0] = new Rook(this, 7, 0, false);
-        for(int i=0; i<8; i++) pieceList[i][1] = new Pawn(this, i, 1, false);
+        for(int i = 0; i < 8; i++) {
+            pieceList[i][1] = new Pawn(this, i, 1, false);
+        }
 
-        // White (Bottom)
+        // White pieces (Bottom)
         pieceList[0][7] = new Rook(this, 0, 7, true);
         pieceList[1][7] = new Knight(this, 1, 7, true);
         pieceList[2][7] = new Bishop(this, 2, 7, true);
@@ -46,76 +49,88 @@ public class Board {
         pieceList[5][7] = new Bishop(this, 5, 7, true);
         pieceList[6][7] = new Knight(this, 6, 7, true);
         pieceList[7][7] = new Rook(this, 7, 7, true);
-        for(int i=0; i<8; i++) pieceList[i][6] = new Pawn(this, i, 6, true);
+        for(int i = 0; i < 8; i++) {
+            pieceList[i][6] = new Pawn(this, i, 6, true);
+        }
     }
     
     private void findKings() {
-        for(int c=0; c<8; c++) {
-            for(int r=0; r<8; r++) {
+        for(int c = 0; c < 8; c++) {
+            for(int r = 0; r < 8; r++) {
                 Piece p = getPiece(c, r);
                 if(p instanceof King) {
-                    if(p.isWhite) whiteKing = (King)p;
-                    else blackKing = (King)p;
+                    if(p.isWhite) {
+                        whiteKing = (King)p;
+                    } else {
+                        blackKing = (King)p;
+                    }
                 }
             }
         }
     }
 
     public Piece getPiece(int col, int row) {
-        if (col < 0 || col > 7 || row < 0 || row > 7) return null;
+        if (col < 0 || col > 7 || row < 0 || row > 7) {
+            return null;
+        }
         return pieceList[col][row];
     }
 
     public boolean movePiece(int newCol, int newRow) {
-        if (selectedPiece != null && gameState == GameState.PLAYING) {
-            if (selectedPiece.canMove(newCol, newRow)) {
-                // Record move
-                Piece captured = pieceList[newCol][newRow];
-                Move move = new Move(selectedPiece, selectedPiece.col, selectedPiece.row, 
-                                    newCol, newRow, captured);
-                
-                // Execute move
-                pieceList[selectedPiece.col][selectedPiece.row] = null;
-                pieceList[newCol][newRow] = selectedPiece;
-                selectedPiece.col = newCol;
-                selectedPiece.row = newRow;
-                selectedPiece.hasMoved = true;
-                
-                moveHistory.add(move);
-                totalMoves++;
-                
-                // Check game state
-                isWhiteTurn = !isWhiteTurn;
-                checkGameState();
-                
-                selectedPiece = null;
-                return true;
-            }
+        if (selectedPiece == null || gameState != GameState.PLAYING) {
+            return false;
         }
+        
+        if (selectedPiece.canMove(newCol, newRow)) {
+            // Record move
+            Piece captured = pieceList[newCol][newRow];
+            Move move = new Move(selectedPiece, selectedPiece.col, selectedPiece.row, 
+                                newCol, newRow, captured);
+            
+            // Execute move
+            pieceList[selectedPiece.col][selectedPiece.row] = null;
+            pieceList[newCol][newRow] = selectedPiece;
+            selectedPiece.col = newCol;
+            selectedPiece.row = newRow;
+            selectedPiece.hasMoved = true;
+            
+            moveHistory.add(move);
+            totalMoves++;
+            
+            // Switch turn and check game state
+            isWhiteTurn = !isWhiteTurn;
+            checkGameState();
+            
+            selectedPiece = null;
+            return true;
+        }
+        
         return false;
     }
 
     public void performComputerMove() {
-        if(gameState != GameState.PLAYING) return;
+        if(gameState != GameState.PLAYING) {
+            return;
+        }
         
-        System.out.println("Computer thinking...");
-        ArrayList<Piece> blackPieces = new ArrayList<>();
+        System.out.println("Computer is thinking...");
         
-        for(int c=0; c<8; c++) {
-            for(int r=0; r<8; r++) {
-                Piece p = getPiece(c,r);
-                if(p != null && !p.isWhite) blackPieces.add(p);
+        // Collect all black pieces
+        List<Piece> blackPieces = new ArrayList<>();
+        for(int c = 0; c < 8; c++) {
+            for(int r = 0; r < 8; r++) {
+                Piece p = getPiece(c, r);
+                if(p != null && !p.isWhite) {
+                    blackPieces.add(p);
+                }
             }
         }
 
-        // Try to find valid move
-        Random rand = new Random();
-        ArrayList<int[]> validMoves = new ArrayList<>();
-        
         // Collect all valid moves
+        List<int[]> validMoves = new ArrayList<>();
         for(Piece p : blackPieces) {
-            for(int c=0; c<8; c++) {
-                for(int r=0; r<8; r++) {
+            for(int c = 0; c < 8; c++) {
+                for(int r = 0; r < 8; r++) {
                     if(p.canMove(c, r)) {
                         validMoves.add(new int[]{p.col, p.row, c, r});
                     }
@@ -123,32 +138,43 @@ public class Board {
             }
         }
         
-        if(!validMoves.isEmpty()) {
-            // Prioritize captures
-            ArrayList<int[]> captureMoves = new ArrayList<>();
-            for(int[] move : validMoves) {
-                if(getPiece(move[2], move[3]) != null) {
-                    captureMoves.add(move);
-                }
+        if(validMoves.isEmpty()) {
+            System.out.println("Computer has no valid moves!");
+            return;
+        }
+        
+        // Prioritize captures
+        List<int[]> captureMoves = new ArrayList<>();
+        for(int[] move : validMoves) {
+            if(getPiece(move[2], move[3]) != null) {
+                captureMoves.add(move);
             }
-            
-            int[] chosenMove = captureMoves.isEmpty() ? 
-                validMoves.get(rand.nextInt(validMoves.size())) :
-                captureMoves.get(rand.nextInt(captureMoves.size()));
-            
-            Piece p = getPiece(chosenMove[0], chosenMove[1]);
+        }
+        
+        Random rand = new Random();
+        int[] chosenMove = captureMoves.isEmpty() ? 
+            validMoves.get(rand.nextInt(validMoves.size())) :
+            captureMoves.get(rand.nextInt(captureMoves.size()));
+        
+        Piece p = getPiece(chosenMove[0], chosenMove[1]);
+        if(p != null) {
             selectedPiece = p;
             movePiece(chosenMove[2], chosenMove[3]);
+            System.out.println("Computer moved: " + p.name + " from " + 
+                             (char)('a' + chosenMove[0]) + (8 - chosenMove[1]) + 
+                             " to " + (char)('a' + chosenMove[2]) + (8 - chosenMove[3]));
         }
     }
     
     public boolean isKingInCheck(boolean isWhite) {
         King king = isWhite ? whiteKing : blackKing;
-        if(king == null) return false;
+        if(king == null) {
+            return false;
+        }
         
         // Check if any enemy piece can capture the king
-        for(int c=0; c<8; c++) {
-            for(int r=0; r<8; r++) {
+        for(int c = 0; c < 8; c++) {
+            for(int r = 0; r < 8; r++) {
                 Piece p = getPiece(c, r);
                 if(p != null && p.isWhite != isWhite) {
                     if(p.canMove(king.col, king.row)) {
@@ -169,17 +195,17 @@ public class Board {
             System.out.println("CHECKMATE! " + (isWhiteTurn ? "Black" : "White") + " wins!");
         } else if(!inCheck && !hasValidMove) {
             gameState = GameState.STALEMATE;
-            System.out.println("STALEMATE!");
+            System.out.println("STALEMATE - Game is a draw!");
         }
     }
     
     private boolean hasValidMoves(boolean isWhite) {
-        for(int c=0; c<8; c++) {
-            for(int r=0; r<8; r++) {
+        for(int c = 0; c < 8; c++) {
+            for(int r = 0; r < 8; r++) {
                 Piece p = getPiece(c, r);
                 if(p != null && p.isWhite == isWhite) {
-                    for(int tc=0; tc<8; tc++) {
-                        for(int tr=0; tr<8; tr++) {
+                    for(int tc = 0; tc < 8; tc++) {
+                        for(int tr = 0; tr < 8; tr++) {
                             if(p.canMove(tc, tr)) {
                                 return true;
                             }
@@ -193,7 +219,7 @@ public class Board {
     
     public void surrender(boolean whiteResigns) {
         gameState = whiteResigns ? GameState.BLACK_WON : GameState.WHITE_WON;
-        System.out.println((whiteResigns ? "White" : "Black") + " surrendered!");
+        System.out.println((whiteResigns ? "White" : "Black") + " resigned from the game!");
     }
     
     public boolean canCancelGame() {
@@ -205,7 +231,9 @@ public class Board {
         for (int c = 0; c < cols; c++) {
             for (int r = 0; r < rows; r++) {
                 Piece p = pieceList[c][r];
-                if (p != null) p.draw(g2, size);
+                if (p != null) {
+                    p.draw(g2, size);
+                }
             }
         }
     }
