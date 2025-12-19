@@ -14,9 +14,19 @@ public class GameReviewer {
     private String currentTimestamp = null;
     
     public GameReviewer() {
-        // Create directories if not exists
-        new File(REVIEW_DIR).mkdirs();
-        new File(BRIDGE_DIR).mkdirs();
+        // Create directories if they don't exist
+        File reviewDir = new File(REVIEW_DIR);
+        File bridgeDir = new File(BRIDGE_DIR);
+        
+        if(!reviewDir.exists()) {
+            reviewDir.mkdirs();
+            System.out.println("Created directory: " + REVIEW_DIR);
+        }
+        
+        if(!bridgeDir.exists()) {
+            bridgeDir.mkdirs();
+            System.out.println("Created directory: " + BRIDGE_DIR);
+        }
     }
     
     /**
@@ -40,6 +50,7 @@ public class GameReviewer {
             
             System.out.println("Live analysis started: " + currentGameFile);
         } catch (IOException e) {
+            System.err.println("Error starting game review: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -82,6 +93,7 @@ public class GameReviewer {
             writer.close();
             
         } catch (IOException e) {
+            System.err.println("Error recording move: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -91,7 +103,9 @@ public class GameReviewer {
      */
     public boolean finalizeGame(Board board, String userComment) {
         if (currentGameFile == null) {
-            return false;
+            // If no current game, create one
+            startNewGame();
+            recordMove(board);
         }
         
         try {
@@ -102,7 +116,7 @@ public class GameReviewer {
             writer.write("  \"timestamp\": \"" + currentTimestamp + "\",\n");
             writer.write("  \"result\": \"" + board.gameState + "\",\n");
             writer.write("  \"total_moves\": " + board.totalMoves + ",\n");
-            writer.write("  \"user_comment\": \"" + userComment.replace("\"", "\\\"") + "\",\n");
+            writer.write("  \"user_comment\": \"" + escapeJson(userComment) + "\",\n");
             writer.write("  \"moves\": [\n");
             
             for(int i = 0; i < board.moveHistory.size(); i++) {
@@ -126,7 +140,7 @@ public class GameReviewer {
             // Also save PGN format
             savePGN(board, userComment);
             
-            System.out.println("Game finalized: " + currentGameFile);
+            System.out.println("Game finalized successfully: " + currentGameFile);
             
             // Reset for next game
             currentGameFile = null;
@@ -135,6 +149,7 @@ public class GameReviewer {
             return true;
             
         } catch (IOException e) {
+            System.err.println("Error finalizing game: " + e.getMessage());
             e.printStackTrace();
             return false;
         }
@@ -155,12 +170,21 @@ public class GameReviewer {
             
             String result = "1-0";
             switch(board.gameState) {
-                case WHITE_WON: result = "1-0"; break;
-                case BLACK_WON: result = "0-1"; break;
-                case STALEMATE: result = "1/2-1/2"; break;
+                case WHITE_WON: 
+                    result = "1-0"; 
+                    break;
+                case BLACK_WON: 
+                    result = "0-1"; 
+                    break;
+                case STALEMATE: 
+                    result = "1/2-1/2"; 
+                    break;
+                default:
+                    result = "*";
+                    break;
             }
             writer.write("[Result \"" + result + "\"]\n");
-            writer.write("[Comment \"" + userComment.replace("\"", "'") + "\"]\n");
+            writer.write("[Comment \"" + escapeJson(userComment) + "\"]\n");
             writer.write("\n");
             
             // Write moves
@@ -170,16 +194,37 @@ public class GameReviewer {
                     moves.append((i/2 + 1)).append(". ");
                 }
                 moves.append(board.moveHistory.get(i).toNotation()).append(" ");
+                
+                // New line every 2 moves for readability
+                if(i % 2 == 1 && i < board.moveHistory.size() - 1) {
+                    moves.append("\n");
+                }
             }
             moves.append(result);
             writer.write(moves.toString());
             writer.write("\n");
             
             writer.close();
+            System.out.println("PGN file saved: " + filename);
             
         } catch (IOException e) {
+            System.err.println("Error saving PGN: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+    
+    /**
+     * Escape special characters for JSON
+     */
+    private String escapeJson(String text) {
+        if(text == null) {
+            return "";
+        }
+        return text.replace("\\", "\\\\")
+                   .replace("\"", "\\\"")
+                   .replace("\n", "\\n")
+                   .replace("\r", "\\r")
+                   .replace("\t", "\\t");
     }
     
     /**
