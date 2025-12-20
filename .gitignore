@@ -56,3 +56,5 @@ analysis_report_*.txt
 # Keep directory structure
 !game_reviews/.gitkeep
 !python_bridge/.gitkeep
+
+/saved_games

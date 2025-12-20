@@ -1,13 +1,13 @@
 // Path: src/main/java/com/erland/chess/utils/SoundManager.java
 package com.erland.chess.utils;
 
-import javafx.scene.media.AudioClip;
-import javafx.scene.media.Media;
-import javafx.scene.media.MediaPlayer;
-
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
+
+import javafx.scene.media.AudioClip;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 
 /**
  * Manages game sound effects and music
