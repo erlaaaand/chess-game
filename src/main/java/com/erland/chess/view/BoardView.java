@@ -1,18 +1,16 @@
 package com.erland.chess.view;
 
-import javafx.animation.PauseTransition;
-import javafx.application.Platform;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.Parent;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.control.*;
-import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.stage.Stage;
-import javafx.util.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.erland.chess.Constants;
+import com.erland.chess.ai.AICharacter;
+import com.erland.chess.ai.AIPlayer;
 import com.erland.chess.model.Board;
 import com.erland.chess.model.GameState;
 import com.erland.chess.model.Move;
@@ -20,15 +18,34 @@ import com.erland.chess.model.pieces.Piece;
 import com.erland.chess.network.NetworkHandler;
 import com.erland.chess.review.GameReviewer;
 import com.erland.chess.view.MenuView.GameMode;
-import com.erland.chess.view.handlers.*;
+import com.erland.chess.view.handlers.BoardInteractionHandler;
+import com.erland.chess.view.handlers.HighlightManager;
+import com.erland.chess.view.handlers.MoveExecutor;
 import com.erland.chess.view.renderers.BoardRenderer;
 import com.erland.chess.view.ui.ControlPanelUI;
 import com.erland.chess.view.ui.CoordinateLabels;
-import com.erland.chess.ai.AICharacter;
-import com.erland.chess.ai.AIPlayer;
+
+import javafx.animation.PauseTransition;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Parent;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
+import javafx.scene.control.TextInputDialog;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Pane;
+import javafx.scene.paint.Color;
+import javafx.stage.Stage;
+import javafx.util.Duration;
 
 /**
  * Main chess board view with complete game logic integration
+ * FIXED: All compilation errors, thread safety, proper imports
  */
 public class BoardView implements MoveExecutor.MoveListener {
     
@@ -58,6 +75,15 @@ public class BoardView implements MoveExecutor.MoveListener {
     // UI Components
     private ControlPanelUI controlPanel;
     
+    // Thread safety
+    private final AtomicBoolean aiIsThinking = new AtomicBoolean(false);
+    private volatile boolean isDisposed = false;
+    private final ExecutorService aiExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "AI-Move-Thread");
+        t.setDaemon(true);
+        return t;
+    });
+    
     // ==================== CONSTRUCTOR ====================
     
     public BoardView(Stage stage, GameMode mode, Object networkOrAI, boolean isHost) {
@@ -70,18 +96,17 @@ public class BoardView implements MoveExecutor.MoveListener {
         this.root = new BorderPane();
         root.getStyleClass().add("board-container");
         
-        // Setup based on mode
         setupGameMode(networkOrAI);
-        
         initializeComponents();
         createUI();
         
-        // Start game
         gameReviewer.startNewGame();
         System.out.println("=".repeat(60));
         System.out.println("Chess game started - Mode: " + mode);
         System.out.println("=".repeat(60));
     }
+    
+    // ==================== SETUP ====================
     
     private void setupGameMode(Object networkOrAI) {
         if (gameMode == GameMode.NETWORK) {
@@ -93,20 +118,15 @@ public class BoardView implements MoveExecutor.MoveListener {
             if (networkOrAI instanceof AICharacter) {
                 this.aiCharacter = (AICharacter) networkOrAI;
             } else {
-                // Default AI character
                 this.aiCharacter = new AICharacter("Default AI", 1200);
             }
         }
     }
     
-    // ==================== INITIALIZATION ====================
-    
     private void initializeComponents() {
-        // Create canvases
         boardCanvas = new Canvas(Constants.BOARD_PIXEL_SIZE, Constants.BOARD_PIXEL_SIZE);
         pieceCanvas = new Canvas(Constants.BOARD_PIXEL_SIZE, Constants.BOARD_PIXEL_SIZE);
         
-        // Create layers
         highlightLayer = new Pane();
         highlightLayer.setPrefSize(Constants.BOARD_PIXEL_SIZE, Constants.BOARD_PIXEL_SIZE);
         highlightLayer.setMouseTransparent(true);
@@ -115,7 +135,6 @@ public class BoardView implements MoveExecutor.MoveListener {
         dragLayer.setPrefSize(Constants.BOARD_PIXEL_SIZE, Constants.BOARD_PIXEL_SIZE);
         dragLayer.setMouseTransparent(true);
         
-        // Initialize managers
         boardRenderer = new BoardRenderer(boardCanvas, pieceCanvas, board);
         highlightManager = new HighlightManager(board, highlightLayer);
         moveExecutor = new MoveExecutor(board, gameMode, isHost, dragLayer);
@@ -126,26 +145,22 @@ public class BoardView implements MoveExecutor.MoveListener {
             board, dragLayer, moveExecutor, highlightManager
         );
         
-        // Setup mouse handlers
         pieceCanvas.setOnMousePressed(interactionHandler::handleMousePressed);
         pieceCanvas.setOnMouseDragged(interactionHandler::handleMouseDragged);
         pieceCanvas.setOnMouseReleased(interactionHandler::handleMouseReleased);
     }
     
     private void createUI() {
-        // Create board pane with all layers
         Pane boardPane = new Pane();
         boardPane.setPrefSize(Constants.BOARD_PIXEL_SIZE, Constants.BOARD_PIXEL_SIZE);
         boardPane.getChildren().addAll(boardCanvas, highlightLayer, pieceCanvas, dragLayer);
         
-        // Add coordinate labels
         BorderPane boardWithCoords = new BorderPane();
         boardWithCoords.setCenter(boardPane);
         CoordinateLabels.addCoordinates(boardWithCoords, boardPane, Constants.TILE_SIZE);
         
         root.setCenter(boardWithCoords);
         
-        // Create control panel
         controlPanel = new ControlPanelUI(
             board,
             gameMode,
@@ -155,7 +170,6 @@ public class BoardView implements MoveExecutor.MoveListener {
         );
         root.setRight(controlPanel.getRoot());
         
-        // Initial render
         boardRenderer.drawPieces();
     }
     
@@ -163,112 +177,203 @@ public class BoardView implements MoveExecutor.MoveListener {
     
     @Override
     public void onMoveExecuted(Move move) {
-        // Update UI
-        boardRenderer.setDraggedPiece(null);
-        boardRenderer.drawPieces();
-        controlPanel.updateMoveLog(board.moveHistory);
-        controlPanel.updateTurnLabel(board.isWhiteTurn);
-        controlPanel.updateCheckStatus(board.whiteInCheck, board.blackInCheck);
-        controlPanel.updateStatus("Move executed", Color.web("#27ae60"));
+        if (isDisposed) return;
         
-        // Record for analysis
-        gameReviewer.recordMove(board);
-        
-        // Send to network if needed
-        if (networkHandler != null) {
-            networkHandler.sendMove(move);
-        }
-        
-        // Trigger AI move if needed
-        if (shouldAIMoveNext()) {
-            scheduleAIMove();
-        }
+        Platform.runLater(() -> {
+            boardRenderer.setDraggedPiece(null);
+            boardRenderer.drawPieces();
+            controlPanel.updateMoveLog(board.moveHistory);
+            controlPanel.updateTurnLabel(board.isWhiteTurn);
+            controlPanel.updateCheckStatus(board.whiteInCheck, board.blackInCheck);
+            controlPanel.updateStatus("Move executed", Color.web("#27ae60"));
+            
+            gameReviewer.recordMove(board);
+            
+            if (networkHandler != null) {
+                networkHandler.sendMove(move);
+            }
+            
+            // Trigger AI move if needed
+            if (shouldAIMoveNext() && aiIsThinking.compareAndSet(false, true)) {
+                scheduleAIMove();
+            }
+        });
     }
     
     @Override
     public void onGameStateChanged() {
-        boardRenderer.drawPieces();
-        controlPanel.updateTurnLabel(board.isWhiteTurn);
-        controlPanel.updateCheckStatus(board.whiteInCheck, board.blackInCheck);
-        checkGameEnd();
+        if (isDisposed) return;
+        
+        Platform.runLater(() -> {
+            boardRenderer.drawPieces();
+            controlPanel.updateTurnLabel(board.isWhiteTurn);
+            controlPanel.updateCheckStatus(board.whiteInCheck, board.blackInCheck);
+            checkGameEnd();
+        });
     }
     
     @Override
     public void onPieceSelected(Piece piece) {
-        boardRenderer.setDraggedPiece(piece);
-        controlPanel.updateStatus("Selected: " + piece.name, Color.web("#f39c12"));
+        if (isDisposed) return;
+        
+        Platform.runLater(() -> {
+            boardRenderer.setDraggedPiece(piece);
+            controlPanel.updateStatus("Selected: " + piece.name, Color.web("#f39c12"));
+        });
     }
     
     @Override
     public void onPieceDeselected() {
-        boardRenderer.setDraggedPiece(null);
-        boardRenderer.drawPieces();
-        controlPanel.updateStatus("Ready", Color.web("#95a5a6"));
+        if (isDisposed) return;
+        
+        Platform.runLater(() -> {
+            boardRenderer.setDraggedPiece(null);
+            boardRenderer.drawPieces();
+            controlPanel.updateStatus("Ready", Color.web("#95a5a6"));
+        });
     }
     
     @Override
     public void onInvalidMove(String reason) {
-        controlPanel.updateStatus(reason, Color.web("#e74c3c"));
+        if (isDisposed) return;
+        
+        Platform.runLater(() -> {
+            controlPanel.updateStatus(reason, Color.web("#e74c3c"));
+        });
     }
     
     @Override
     public void onPromotionNeeded(int col, int row) {
-        // Handled by showPromotionDialog
+        // Handled by showPromotionDialog callback
     }
     
     // ==================== AI LOGIC ====================
     
+    /**
+     * Check if AI should move next
+     */
     private boolean shouldAIMoveNext() {
         return gameMode == GameMode.VS_COMPUTER && 
                !board.isWhiteTurn && 
-               board.gameState == GameState.PLAYING;
+               board.gameState == GameState.PLAYING &&
+               !aiIsThinking.get();
     }
     
+    /**
+     * Schedule AI move asynchronously
+     */
     private void scheduleAIMove() {
-        controlPanel.updateStatus("AI thinking...", Color.web("#f39c12"));
+        Platform.runLater(() -> {
+            controlPanel.updateStatus("AI thinking...", Color.web("#f39c12"));
+        });
         
-        new Thread(() -> {
+        aiExecutor.submit(() -> {
             try {
-                Thread.sleep(500); // Brief pause for realism
+                // Brief pause for realism
+                Thread.sleep(Constants.AI_MIN_THINK_TIME);
                 
+                if (isDisposed) {
+                    aiIsThinking.set(false);
+                    return;
+                }
+                
+                // Get AI move
                 AIPlayer aiPlayer = new AIPlayer(aiCharacter);
-                Move aiMove = aiPlayer.getMove(board).join();
+                CompletableFuture<Move> moveFuture = aiPlayer.getMove(board);
                 
-                Platform.runLater(() -> {
-                    if (aiMove != null) {
-                        executeAIMove(aiMove);
-                    } else {
+                // Wait for move with timeout
+                Move aiMove = null;
+                try {
+                    aiMove = moveFuture.get(
+                        Constants.AI_MAX_THINK_TIME, 
+                        TimeUnit.MILLISECONDS
+                    );
+                } catch (TimeoutException e) {
+                    System.err.println("AI move timeout");
+                } catch (ExecutionException e) {
+                    System.err.println("AI execution error: " + e.getCause());
+                }
+                
+                // Execute move on UI thread
+                final Move finalMove = aiMove;
+                if (finalMove != null && !isDisposed) {
+                    Platform.runLater(() -> executeAIMove(finalMove));
+                } else {
+                    Platform.runLater(() -> {
                         controlPanel.updateStatus("AI cannot move", Color.RED);
-                    }
-                });
+                        aiIsThinking.set(false);
+                    });
+                }
                 
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Platform.runLater(() -> {
+                    controlPanel.updateStatus("AI interrupted", Color.RED);
+                    aiIsThinking.set(false);
+                });
             } catch (Exception e) {
                 e.printStackTrace();
-                Platform.runLater(() -> 
-                    controlPanel.updateStatus("AI error", Color.RED)
-                );
+                Platform.runLater(() -> {
+                    controlPanel.updateStatus("AI error: " + e.getMessage(), Color.RED);
+                    aiIsThinking.set(false);
+                });
             }
-        }).start();
+        });
     }
     
+    /**
+     * Execute AI move on the board
+     */
     private void executeAIMove(Move move) {
-        board.selectedPiece = move.piece;
-        boolean success = board.movePiece(move.toCol, move.toRow);
-        
-        if (success) {
-            // Handle promotion (AI auto-promotes to Queen)
-            if (move.piece.name.equals("Pawn") && 
-                (move.toRow == 0 || move.toRow == 7)) {
-                board.promotePawn(move.toCol, move.toRow, "Queen");
-                
-                if (!board.moveHistory.isEmpty()) {
-                    board.moveHistory.get(board.moveHistory.size() - 1)
-                        .promotionPiece = "Queen";
-                }
+        try {
+            // Validate move object
+            if (move == null) {
+                controlPanel.updateStatus("Invalid AI move: null", Color.RED);
+                aiIsThinking.set(false);
+                return;
             }
             
-            onMoveExecuted(move);
-            onGameStateChanged();
+            // Ensure piece reference exists
+            if (move.piece == null) {
+                Piece p = board.getPiece(move.fromCol, move.fromRow);
+                if (p == null) {
+                    controlPanel.updateStatus("Invalid AI move: no piece at source", Color.RED);
+                    aiIsThinking.set(false);
+                    return;
+                }
+                move.piece = p;
+            }
+            
+            // Set selected piece
+            board.selectedPiece = move.piece;
+            
+            // Execute move
+            boolean success = board.movePiece(move.toCol, move.toRow);
+            
+            if (success) {
+                // Handle pawn promotion
+                if (move.piece.name.equals("Pawn") && 
+                    (move.toRow == 0 || move.toRow == 7)) {
+                    board.promotePawn(move.toCol, move.toRow, "Queen");
+                    
+                    if (!board.moveHistory.isEmpty()) {
+                        board.moveHistory.get(board.moveHistory.size() - 1)
+                            .promotionPiece = "Queen";
+                    }
+                }
+                
+                // Notify listeners
+                onMoveExecuted(move);
+                onGameStateChanged();
+            } else {
+                controlPanel.updateStatus("AI move failed", Color.RED);
+            }
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            controlPanel.updateStatus("AI move error: " + e.getMessage(), Color.RED);
+        } finally {
+            aiIsThinking.set(false);
         }
     }
     
@@ -396,6 +501,22 @@ public class BoardView implements MoveExecutor.MoveListener {
     }
     
     private void handleBackToMenu() {
+        // Set disposed flag
+        isDisposed = true;
+        aiIsThinking.set(false);
+        
+        // Shutdown AI executor
+        aiExecutor.shutdown();
+        try {
+            if (!aiExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                aiExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            aiExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        
+        // Close network
         if (networkHandler != null) {
             try {
                 networkHandler.close();
@@ -404,6 +525,7 @@ public class BoardView implements MoveExecutor.MoveListener {
             }
         }
         
+        // Return to menu
         MenuView menuView = new MenuView(primaryStage);
         primaryStage.getScene().setRoot(menuView.getRoot());
     }
@@ -441,8 +563,13 @@ public class BoardView implements MoveExecutor.MoveListener {
     
     // ==================== NETWORK SUPPORT ====================
     
+    /**
+     * Receive move from network opponent
+     */
     public void receiveMove(Move move) {
         Platform.runLater(() -> {
+            if (isDisposed) return;
+            
             Piece p = board.getPiece(move.fromCol, move.fromRow);
             if (p != null) {
                 moveExecutor.tryMove(p, move.toCol, move.toRow);

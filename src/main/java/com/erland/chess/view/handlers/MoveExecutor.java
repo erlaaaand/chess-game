@@ -1,21 +1,23 @@
 package com.erland.chess.view.handlers;
 
-import javafx.animation.*;
-import javafx.scene.layout.Pane;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
-import javafx.util.Duration;
-
 import com.erland.chess.Constants;
 import com.erland.chess.model.Board;
 import com.erland.chess.model.GameState;
 import com.erland.chess.model.Move;
 import com.erland.chess.model.pieces.Piece;
-import com.erland.chess.view.MenuView.GameMode;
 import com.erland.chess.utils.PieceImageLoader;
+import com.erland.chess.view.MenuView.GameMode;
+
+import javafx.animation.Interpolator;
+import javafx.animation.TranslateTransition;
+import javafx.application.Platform;
+import javafx.scene.layout.Pane;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.util.Duration;
 
 /**
- * Handles move execution with proper validation and animation
+ * FIXED: Better null safety, improved animation handling, proper state management
  */
 public class MoveExecutor {
     
@@ -27,7 +29,7 @@ public class MoveExecutor {
     private MoveListener moveListener;
     private PromotionHandler promotionHandler;
     
-    // ==================== INTERFACES ====================
+    private volatile boolean isAnimating = false;
     
     public interface MoveListener {
         void onMoveExecuted(Move move);
@@ -46,8 +48,6 @@ public class MoveExecutor {
         void onPromotionSelected(String pieceType);
     }
     
-    // ==================== CONSTRUCTOR ====================
-    
     public MoveExecutor(Board board, GameMode gameMode, boolean isHost, Pane dragLayer) {
         this.board = board;
         this.gameMode = gameMode;
@@ -63,10 +63,12 @@ public class MoveExecutor {
         this.promotionHandler = handler;
     }
     
-    // ==================== PERMISSION CHECKS ====================
-    
     public boolean canPlayerMove() {
         if (board.gameState != GameState.PLAYING) {
+            return false;
+        }
+        
+        if (isAnimating) {
             return false;
         }
         
@@ -74,13 +76,15 @@ public class MoveExecutor {
             case NETWORK:
                 return (isHost && board.isWhiteTurn) || (!isHost && !board.isWhiteTurn);
             case VS_COMPUTER:
-                return board.isWhiteTurn; // Player is always white
+                return board.isWhiteTurn;
             default:
-                return true; // Local multiplayer
+                return true;
         }
     }
     
     public boolean isPlayerPiece(Piece piece) {
+        if (piece == null) return false;
+        
         switch (gameMode) {
             case NETWORK:
                 return (isHost && piece.isWhite) || (!isHost && !piece.isWhite);
@@ -91,15 +95,26 @@ public class MoveExecutor {
         }
     }
     
-    // ==================== MOVE EXECUTION ====================
-    
+    /**
+     * FIXED: Better validation and null safety
+     */
     public boolean tryMove(Piece piece, int targetCol, int targetRow) {
         if (piece == null) {
             notifyInvalidMove("No piece selected");
             return false;
         }
         
+        if (isAnimating) {
+            notifyInvalidMove("Please wait for animation to complete");
+            return false;
+        }
+        
         // Validation
+        if (!isValidSquare(targetCol, targetRow)) {
+            notifyInvalidMove("Target square out of bounds");
+            return false;
+        }
+        
         if (!piece.canMove(targetCol, targetRow)) {
             notifyInvalidMove("Invalid move for " + piece.name);
             return false;
@@ -115,73 +130,128 @@ public class MoveExecutor {
                              (targetRow == 0 || targetRow == 7);
         
         if (isPromotion) {
-            // Animate move first, then show promotion dialog
-            animatePieceMove(piece.col, piece.row, targetCol, targetRow, piece, () -> {
-                // FIX: Pastikan board tahu bidak mana yang sedang bergerak sebelum dieksekusi
-                // karena animasi bersifat async, selectedPiece mungkin sudah null di BoardInteractionHandler
-                board.selectedPiece = piece;
-                
-                // Execute move on board
-                board.movePiece(targetCol, targetRow);
-                
-                // Show promotion dialog
-                handlePromotion(targetCol, targetRow);
-            });
+            handlePromotionMove(piece, targetCol, targetRow);
             return true;
         } else {
-            // Normal move
-            int fromCol = piece.col;
-            int fromRow = piece.row;
-            
-            animatePieceMove(fromCol, fromRow, targetCol, targetRow, piece, () -> {
-                // FIX: Pastikan board tahu bidak mana yang sedang bergerak
-                board.selectedPiece = piece;
-
-                // Execute move on board
-                boolean success = board.movePiece(targetCol, targetRow);
-                
-                if (success && !board.moveHistory.isEmpty()) {
-                    Move lastMove = board.moveHistory.get(board.moveHistory.size() - 1);
-                    notifyMoveExecuted(lastMove);
-                    notifyGameStateChanged();
-                }
-            });
+            handleNormalMove(piece, targetCol, targetRow);
             return true;
         }
     }
     
-    // ==================== ANIMATION ====================
-    
-    private void animatePieceMove(int fromCol, int fromRow, int toCol, int toRow,
-                                  Piece piece, Runnable onFinish) {
-        double startX = fromCol * Constants.TILE_SIZE + 5;
-        double startY = fromRow * Constants.TILE_SIZE + 5;
-        double endX = toCol * Constants.TILE_SIZE + 5;
-        double endY = toRow * Constants.TILE_SIZE + 5;
+    /**
+     * FIXED: Proper promotion handling with animation
+     */
+    private void handlePromotionMove(Piece piece, int targetCol, int targetRow) {
+        int fromCol = piece.col;
+        int fromRow = piece.row;
         
-        Rectangle animRect = createPieceVisual(piece, startX, startY);
-        dragLayer.getChildren().clear();
-        dragLayer.getChildren().add(animRect);
+        isAnimating = true;
         
-        TranslateTransition transition = new TranslateTransition(
-            Duration.millis(Constants.MOVE_ANIMATION_DURATION), animRect
-        );
-        transition.setFromX(0);
-        transition.setFromY(0);
-        transition.setToX(endX - startX);
-        transition.setToY(endY - startY);
-        transition.setInterpolator(Interpolator.EASE_BOTH);
-        
-        transition.setOnFinished(e -> {
-            dragLayer.getChildren().clear();
-            if (onFinish != null) {
-                onFinish.run();
+        animatePieceMove(fromCol, fromRow, targetCol, targetRow, piece, () -> {
+            // Store piece reference before move
+            final Piece movedPiece = piece;
+            
+            // Set board state
+            board.selectedPiece = movedPiece;
+            
+            // Execute move
+            boolean success = board.movePiece(targetCol, targetRow);
+            
+            if (success) {
+                // Show promotion dialog
+                handlePromotion(targetCol, targetRow);
             }
+            
+            isAnimating = false;
         });
-        
-        transition.play();
     }
     
+    /**
+     * FIXED: Safer normal move handling
+     */
+    private void handleNormalMove(Piece piece, int targetCol, int targetRow) {
+        int fromCol = piece.col;
+        int fromRow = piece.row;
+        
+        isAnimating = true;
+        
+        animatePieceMove(fromCol, fromRow, targetCol, targetRow, piece, () -> {
+            // Store piece reference
+            final Piece movedPiece = piece;
+            
+            // Set board state
+            board.selectedPiece = movedPiece;
+            
+            // Execute move
+            boolean success = board.movePiece(targetCol, targetRow);
+            
+            if (success && !board.moveHistory.isEmpty()) {
+                Move lastMove = board.moveHistory.get(board.moveHistory.size() - 1);
+                notifyMoveExecuted(lastMove);
+                notifyGameStateChanged();
+            } else {
+                notifyInvalidMove("Move execution failed");
+            }
+            
+            isAnimating = false;
+        });
+    }
+    
+    /**
+     * FIXED: Smoother animation with better error handling
+     */
+    private void animatePieceMove(int fromCol, int fromRow, int toCol, int toRow,
+                                  Piece piece, Runnable onFinish) {
+        try {
+            double startX = fromCol * Constants.TILE_SIZE + 5;
+            double startY = fromRow * Constants.TILE_SIZE + 5;
+            double endX = toCol * Constants.TILE_SIZE + 5;
+            double endY = toRow * Constants.TILE_SIZE + 5;
+            
+            Rectangle animRect = createPieceVisual(piece, startX, startY);
+            
+            Platform.runLater(() -> {
+                dragLayer.getChildren().clear();
+                dragLayer.getChildren().add(animRect);
+            });
+            
+            TranslateTransition transition = new TranslateTransition(
+                Duration.millis(Constants.MOVE_ANIMATION_DURATION), animRect
+            );
+            transition.setFromX(0);
+            transition.setFromY(0);
+            transition.setToX(endX - startX);
+            transition.setToY(endY - startY);
+            transition.setInterpolator(Interpolator.EASE_BOTH);
+            
+            transition.setOnFinished(e -> {
+                Platform.runLater(() -> {
+                    dragLayer.getChildren().clear();
+                    if (onFinish != null) {
+                        onFinish.run();
+                    }
+                });
+            });
+            
+            transition.play();
+            
+        } catch (Exception e) {
+            System.err.println("Animation error: " + e.getMessage());
+            e.printStackTrace();
+            
+            // Fallback: execute move immediately
+            Platform.runLater(() -> {
+                dragLayer.getChildren().clear();
+                if (onFinish != null) {
+                    onFinish.run();
+                }
+            });
+        }
+    }
+    
+    /**
+     * FIXED: Better visual creation with error handling
+     */
     private Rectangle createPieceVisual(Piece piece, double x, double y) {
         Rectangle rect = new Rectangle(x, y, 
             Constants.TILE_SIZE - 10, Constants.TILE_SIZE - 10);
@@ -193,53 +263,60 @@ public class MoveExecutor {
             if (img != null) {
                 rect.setFill(new javafx.scene.paint.ImagePattern(img));
             } else {
-                rect.setFill(piece.isWhite ? Color.WHITE : Color.BLACK);
+                // Fallback color
+                rect.setFill(piece.isWhite ? Color.LIGHTGRAY : Color.DARKGRAY);
+                rect.setStroke(piece.isWhite ? Color.BLACK : Color.WHITE);
+                rect.setStrokeWidth(2);
             }
         } catch (Exception e) {
-            rect.setFill(piece.isWhite ? Color.WHITE : Color.BLACK);
+            System.err.println("Failed to load piece image: " + e.getMessage());
+            rect.setFill(piece.isWhite ? Color.LIGHTGRAY : Color.DARKGRAY);
         }
         
         rect.setEffect(new javafx.scene.effect.DropShadow(10, Color.BLACK));
         return rect;
     }
     
-    // ==================== PROMOTION ====================
-    
     private void handlePromotion(int col, int row) {
         if (promotionHandler != null) {
-            promotionHandler.showPromotionDialog(col, row, pieceType -> {
-                board.promotePawn(col, row, pieceType);
-                
-                if (!board.moveHistory.isEmpty()) {
-                    Move lastMove = board.moveHistory.get(board.moveHistory.size() - 1);
-                    notifyMoveExecuted(lastMove);
-                }
-                notifyGameStateChanged();
+            Platform.runLater(() -> {
+                promotionHandler.showPromotionDialog(col, row, pieceType -> {
+                    board.promotePawn(col, row, pieceType);
+                    
+                    if (!board.moveHistory.isEmpty()) {
+                        Move lastMove = board.moveHistory.get(board.moveHistory.size() - 1);
+                        notifyMoveExecuted(lastMove);
+                    }
+                    notifyGameStateChanged();
+                });
             });
         } else {
-            // Auto-promote to Queen if no handler
+            // Auto-promote to Queen
             board.promotePawn(col, row, "Queen");
+            
+            if (!board.moveHistory.isEmpty()) {
+                Move lastMove = board.moveHistory.get(board.moveHistory.size() - 1);
+                notifyMoveExecuted(lastMove);
+            }
             notifyGameStateChanged();
         }
     }
     
-    // ==================== NOTIFICATIONS ====================
-    
     private void notifyMoveExecuted(Move move) {
         if (moveListener != null) {
-            moveListener.onMoveExecuted(move);
+            Platform.runLater(() -> moveListener.onMoveExecuted(move));
         }
     }
     
     private void notifyGameStateChanged() {
         if (moveListener != null) {
-            moveListener.onGameStateChanged();
+            Platform.runLater(() -> moveListener.onGameStateChanged());
         }
     }
     
     private void notifyInvalidMove(String reason) {
         if (moveListener != null) {
-            moveListener.onInvalidMove(reason);
+            Platform.runLater(() -> moveListener.onInvalidMove(reason));
         }
     }
     
@@ -253,5 +330,13 @@ public class MoveExecutor {
         if (moveListener != null) {
             moveListener.onPieceDeselected();
         }
+    }
+    
+    private boolean isValidSquare(int col, int row) {
+        return col >= 0 && col < 8 && row >= 0 && row < 8;
+    }
+    
+    public boolean isAnimating() {
+        return isAnimating;
     }
 }
