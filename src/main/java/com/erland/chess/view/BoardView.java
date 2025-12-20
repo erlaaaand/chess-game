@@ -25,7 +25,6 @@ import com.erland.chess.view.renderers.BoardRenderer;
 import com.erland.chess.view.ui.ControlPanelUI;
 import com.erland.chess.view.ui.CoordinateLabels;
 
-import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -41,7 +40,6 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
-import javafx.util.Duration;
 
 /**
  * Main chess board view with complete game logic integration
@@ -179,11 +177,16 @@ public class BoardView implements MoveExecutor.MoveListener {
     public void onMoveExecuted(Move move) {
         if (isDisposed) return;
         
+        // Pastikan update UI selalu di JavaFX Thread
         Platform.runLater(() -> {
             boardRenderer.setDraggedPiece(null);
             boardRenderer.drawPieces();
             controlPanel.updateMoveLog(board.moveHistory);
             controlPanel.updateTurnLabel(board.isWhiteTurn);
+            
+            // Highlight langkah terakhir
+            highlightManager.highlightLastMove(move);
+            
             controlPanel.updateCheckStatus(board.whiteInCheck, board.blackInCheck);
             controlPanel.updateStatus("Move executed", Color.web("#27ae60"));
             
@@ -193,8 +196,11 @@ public class BoardView implements MoveExecutor.MoveListener {
                 networkHandler.sendMove(move);
             }
             
-            // Trigger AI move if needed
-            if (shouldAIMoveNext() && aiIsThinking.compareAndSet(false, true)) {
+            // Cek Game Over SETELAH render update
+            checkGameEnd(); 
+            
+            // Trigger AI jika game BELUM berakhir
+            if (board.gameState == GameState.PLAYING && shouldAIMoveNext() && aiIsThinking.compareAndSet(false, true)) {
                 scheduleAIMove();
             }
         });
@@ -203,12 +209,11 @@ public class BoardView implements MoveExecutor.MoveListener {
     @Override
     public void onGameStateChanged() {
         if (isDisposed) return;
-        
         Platform.runLater(() -> {
             boardRenderer.drawPieces();
             controlPanel.updateTurnLabel(board.isWhiteTurn);
             controlPanel.updateCheckStatus(board.whiteInCheck, board.blackInCheck);
-            checkGameEnd();
+            checkGameEnd(); // Double check
         });
     }
     
@@ -420,38 +425,51 @@ public class BoardView implements MoveExecutor.MoveListener {
             return;
         }
         
+        // Matikan interaksi board
         controlPanel.disableGameButtons();
         
-        String result;
+        String resultTitle;
+        String resultHeader;
         Color color;
         
         switch (board.gameState) {
             case WHITE_WON:
-                result = "♔ White Wins! ♔";
+                resultTitle = "Game Over";
+                resultHeader = "White Wins by Checkmate!";
                 color = Color.web("#87ceeb");
                 break;
             case BLACK_WON:
-                result = "♚ Black Wins! ♚";
+                resultTitle = "Game Over";
+                resultHeader = "Black Wins by Checkmate!";
                 color = Color.web("#ff69b4");
                 break;
             case STALEMATE:
-                result = "Draw - Stalemate!";
+                resultTitle = "Draw";
+                resultHeader = "Game Drawn by Stalemate";
                 color = Color.web("#ffd700");
                 break;
             case CANCELLED:
-                result = "Game Cancelled";
+                resultTitle = "Game Cancelled";
+                resultHeader = "Game was cancelled.";
                 color = Color.GRAY;
                 break;
             default:
                 return;
         }
         
-        controlPanel.updateStatus(result, color);
+        controlPanel.updateStatus(resultHeader, color);
         
+        // Tampilkan Alert JavaFX untuk memastikan user melihat hasil
         if (board.gameState != GameState.CANCELLED) {
-            PauseTransition pause = new PauseTransition(Duration.millis(1500));
-            pause.setOnFinished(e -> showReviewDialog());
-            pause.play();
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle(resultTitle);
+            alert.setHeaderText(resultHeader);
+            alert.setContentText("Click OK to proceed to Game Review.");
+            
+            // Tampilkan alert, dan ketika ditutup baru pindah ke review
+            alert.showAndWait().ifPresent(response -> {
+                showReviewDialog();
+            });
         }
     }
     
