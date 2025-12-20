@@ -208,43 +208,36 @@ public class MoveExecutor {
             double endX = toCol * Constants.TILE_SIZE + 5;
             double endY = toRow * Constants.TILE_SIZE + 5;
             
-            Rectangle animRect = createPieceVisual(piece, startX, startY);
-            
+            // Create visual di Thread UI
             Platform.runLater(() -> {
-                dragLayer.getChildren().clear();
+                Rectangle animRect = createPieceVisual(piece, startX, startY);
+                dragLayer.getChildren().clear(); // Bersihkan sisa drag sebelumnya
                 dragLayer.getChildren().add(animRect);
-            });
-            
-            TranslateTransition transition = new TranslateTransition(
-                Duration.millis(Constants.MOVE_ANIMATION_DURATION), animRect
-            );
-            transition.setFromX(0);
-            transition.setFromY(0);
-            transition.setToX(endX - startX);
-            transition.setToY(endY - startY);
-            transition.setInterpolator(Interpolator.EASE_BOTH);
-            
-            transition.setOnFinished(e -> {
-                Platform.runLater(() -> {
-                    dragLayer.getChildren().clear();
+                
+                TranslateTransition transition = new TranslateTransition(
+                    Duration.millis(Constants.MOVE_ANIMATION_DURATION), animRect
+                );
+                transition.setFromX(0);
+                transition.setFromY(0);
+                transition.setToX(endX - startX);
+                transition.setToY(endY - startY);
+                transition.setInterpolator(Interpolator.EASE_BOTH);
+                
+                transition.setOnFinished(e -> {
+                    dragLayer.getChildren().clear(); // Hapus visual animasi
                     if (onFinish != null) {
-                        onFinish.run();
+                        onFinish.run(); // Jalankan callback (update model & redraw board)
                     }
                 });
+                
+                transition.play();
             });
             
-            transition.play();
-            
         } catch (Exception e) {
-            System.err.println("Animation error: " + e.getMessage());
-            e.printStackTrace();
-            
-            // Fallback: execute move immediately
+            // Fallback jika error animasi
             Platform.runLater(() -> {
                 dragLayer.getChildren().clear();
-                if (onFinish != null) {
-                    onFinish.run();
-                }
+                if (onFinish != null) onFinish.run();
             });
         }
     }
