@@ -1,19 +1,17 @@
 package com.erland.chess.view.handlers;
 
+import com.erland.chess.model.Board;
+import com.erland.chess.model.pieces.Piece;
+import com.erland.chess.utils.PieceImageLoader;
+
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
-import com.erland.chess.model.Board;
-import com.erland.chess.model.pieces.Piece;
+import javafx.scene.shape.Rectangle; // Pastikan import ini ada
 
-/**
- * Handles all mouse interactions with the chess board
- * Supports both click-to-move and drag-and-drop
- */
 public class BoardInteractionHandler {
     private static final int TILE_SIZE = 85;
-    private static final double DRAG_THRESHOLD = 5.0; // pixels
+    private static final double DRAG_THRESHOLD = 5.0;
     
     private final Board board;
     private final Pane dragLayer;
@@ -26,8 +24,6 @@ public class BoardInteractionHandler {
     private Rectangle draggedPieceVisual = null;
     private double dragStartX = 0;
     private double dragStartY = 0;
-    private double dragOffsetX = 0;
-    private double dragOffsetY = 0;
     private boolean isDragging = false;
     private boolean hasMoved = false;
     
@@ -41,18 +37,13 @@ public class BoardInteractionHandler {
     }
     
     public void handleMousePressed(MouseEvent e) {
-        if (!moveExecutor.canPlayerMove()) {
-            return;
-        }
+        if (!moveExecutor.canPlayerMove()) return;
         
         int col = (int) (e.getX() / TILE_SIZE);
         int row = (int) (e.getY() / TILE_SIZE);
         
-        if (!isValidSquare(col, row)) {
-            return;
-        }
+        if (!isValidSquare(col, row)) return;
         
-        // Store initial position for drag detection
         dragStartX = e.getX();
         dragStartY = e.getY();
         isDragging = false;
@@ -60,156 +51,125 @@ public class BoardInteractionHandler {
         
         Piece clickedPiece = board.getPiece(col, row);
         
-        // Handle piece selection
-        if (selectedPiece == null) {
-            // Select new piece
-            if (clickedPiece != null && moveExecutor.isPlayerPiece(clickedPiece)) {
-                selectPiece(clickedPiece, e.getX(), e.getY());
-            }
-        } else {
-            // Already have selection
-            if (clickedPiece != null && moveExecutor.isPlayerPiece(clickedPiece)) {
-                // Clicking another own piece - switch selection
-                selectPiece(clickedPiece, e.getX(), e.getY());
-            } else {
-                // Clicking empty square or enemy piece - try to move (will be executed on release)
-                // Don't deselect yet, wait for mouse release
-            }
+        // Logika seleksi yang diperbaiki
+        if (clickedPiece != null && moveExecutor.isPlayerPiece(clickedPiece)) {
+            selectPiece(clickedPiece);
+        } else if (selectedPiece != null && (clickedPiece == null || !moveExecutor.isPlayerPiece(clickedPiece))) {
+            // Klik pada kotak kosong atau musuh saat sudah ada yang terpilih -> Biarkan handleMouseReleased mengeksekusi move
         }
     }
     
     public void handleMouseDragged(MouseEvent e) {
-        if (selectedPiece == null) {
-            return;
-        }
+        if (selectedPiece == null) return;
         
-        // Check if mouse has moved enough to start drag
-        double dx = e.getX() - dragStartX;
-        double dy = e.getY() - dragStartY;
-        double distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (!isDragging && distance > DRAG_THRESHOLD) {
-            // Start dragging
-            isDragging = true;
-            draggedPiece = selectedPiece;
-            dragOffsetX = dragStartX - (selectedPiece.col * TILE_SIZE);
-            dragOffsetY = dragStartY - (selectedPiece.row * TILE_SIZE);
-            createDragVisual(e.getX() - dragOffsetX, e.getY() - dragOffsetY);
+        // Deteksi threshold drag
+        if (!isDragging) {
+            double dx = e.getX() - dragStartX;
+            double dy = e.getY() - dragStartY;
+            if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+                isDragging = true;
+                draggedPiece = selectedPiece;
+                // Buat visual tepat di posisi mouse saat ini (centering)
+                createDragVisual(e.getX(), e.getY()); 
+                // Sembunyikan highlight seleksi agar lebih bersih saat drag
+                highlightManager.clearHighlights(); 
+            }
         }
         
         if (isDragging && draggedPieceVisual != null) {
-            // Update drag position
-            draggedPieceVisual.setLayoutX(e.getX() - dragOffsetX);
-            draggedPieceVisual.setLayoutY(e.getY() - dragOffsetY);
+            // Update posisi: Tengahkan visual di kursor mouse
+            double halfSize = (TILE_SIZE - 10) / 2.0;
+            draggedPieceVisual.setLayoutX(e.getX() - halfSize);
+            draggedPieceVisual.setLayoutY(e.getY() - halfSize);
             hasMoved = true;
         }
     }
     
     public void handleMouseReleased(MouseEvent e) {
+        // Hapus visual drag SEBELUM logika move
+        clearDragVisual();
+        
+        if (selectedPiece == null) return;
+
         int col = (int) (e.getX() / TILE_SIZE);
         int row = (int) (e.getY() / TILE_SIZE);
         
-        // Clean up drag visual
-        clearDragVisual();
-        
-        if (selectedPiece == null) {
-            return;
-        }
-        
-        // Determine if this was a click or drag
         if (isDragging && hasMoved) {
-            // Drag and drop
-            handleDragDrop(col, row);
+            // Logic Drag-Drop
+            if (isValidSquare(col, row)) {
+                boolean success = moveExecutor.tryMove(selectedPiece, col, row);
+                if (success) {
+                    deselectPiece(); // Move sukses, reset seleksi
+                } else {
+                    // Move gagal (ilegal), kembalikan highlight ke posisi asal
+                    highlightManager.updateHighlights(selectedPiece);
+                }
+            } else {
+                // Drop di luar board
+                highlightManager.updateHighlights(selectedPiece);
+            }
         } else {
-            // Click to move
-            handleClickMove(col, row);
+            // Logic Click-Click
+            if (isValidSquare(col, row)) {
+                // Jika klik piece yang sama -> deselect
+                if (col == selectedPiece.col && row == selectedPiece.row) {
+                    deselectPiece();
+                } else {
+                    // Coba move
+                    boolean success = moveExecutor.tryMove(selectedPiece, col, row);
+                    if (success) {
+                        deselectPiece();
+                    } else {
+                        // Jika klik piece teman lain -> ganti seleksi
+                        Piece target = board.getPiece(col, row);
+                        if (target != null && moveExecutor.isPlayerPiece(target)) {
+                            selectPiece(target);
+                        }
+                    }
+                }
+            }
         }
         
-        // Reset drag state
+        // Reset state
         isDragging = false;
         hasMoved = false;
         draggedPiece = null;
     }
     
-    private void selectPiece(Piece piece, double mouseX, double mouseY) {
+    private void selectPiece(Piece piece) {
         selectedPiece = piece;
         board.selectedPiece = piece;
-        
-        // Calculate offset for potential drag
-        dragOffsetX = mouseX - (piece.col * TILE_SIZE);
-        dragOffsetY = mouseY - (piece.row * TILE_SIZE);
-        
         highlightManager.updateHighlights(piece);
         moveExecutor.onPieceSelected(piece);
     }
     
-    private void handleDragDrop(int targetCol, int targetRow) {
-        if (!isValidSquare(targetCol, targetRow)) {
-            // Dropped outside board - cancel
-            deselectPiece();
-            return;
-        }
-        
-        // Try to execute move
-        if (moveExecutor.tryMove(selectedPiece, targetCol, targetRow)) {
-            // Move successful
-            selectedPiece = null;
-            board.selectedPiece = null;
-            highlightManager.clearHighlights();
-        } else {
-            // Move failed - keep selection
-            highlightManager.updateHighlights(selectedPiece);
-        }
-    }
-    
-    private void handleClickMove(int targetCol, int targetRow) {
-        if (!isValidSquare(targetCol, targetRow)) {
-            return;
-        }
-        
-        // If clicking same square, deselect
-        if (targetCol == selectedPiece.col && targetRow == selectedPiece.row) {
-            deselectPiece();
-            return;
-        }
-        
-        // Try to execute move
-        if (moveExecutor.tryMove(selectedPiece, targetCol, targetRow)) {
-            // Move successful
-            selectedPiece = null;
-            board.selectedPiece = null;
-            highlightManager.clearHighlights();
-        } else {
-            // Move failed - keep selection (unless clicking empty square)
-            Piece targetPiece = board.getPiece(targetCol, targetRow);
-            if (targetPiece == null) {
-                deselectPiece();
-            }
-        }
-    }
-    
-    private void createDragVisual(double x, double y) {
+    private void createDragVisual(double mouseX, double mouseY) {
         if (draggedPiece == null) return;
         
-        draggedPieceVisual = new Rectangle(x, y, TILE_SIZE - 10, TILE_SIZE - 10);
-        
-        // Get piece image
-        String color = draggedPiece.isWhite ? "w" : "b";
-        String pieceName = draggedPiece.name.toLowerCase();
+        // Ukuran visual sedikit lebih besar saat di-drag untuk efek tactile
+        double size = TILE_SIZE; 
+        draggedPieceVisual = new Rectangle(0, 0, size, size);
         
         try {
-            javafx.scene.image.Image img = new javafx.scene.image.Image(
-                getClass().getResourceAsStream("/images/" + color + "_" + pieceName + ".png"),
-                TILE_SIZE - 10, TILE_SIZE - 10, true, true
-            );
-            draggedPieceVisual.setFill(new javafx.scene.paint.ImagePattern(img));
+            javafx.scene.image.Image img = PieceImageLoader.getInstance()
+                .getImage(draggedPiece.isWhite, draggedPiece.name);
+            if (img != null) {
+                draggedPieceVisual.setFill(new javafx.scene.paint.ImagePattern(img));
+            } else {
+                draggedPieceVisual.setFill(Color.GRAY);
+            }
         } catch (Exception e) {
-            // Fallback to colored rectangle
-            draggedPieceVisual.setFill(draggedPiece.isWhite ? Color.WHITE : Color.BLACK);
+            draggedPieceVisual.setFill(Color.GRAY);
         }
         
-        draggedPieceVisual.setEffect(new javafx.scene.effect.DropShadow(15, Color.BLACK));
-        draggedPieceVisual.setOpacity(0.9);
+        // Posisi awal langsung di tengah mouse
+        draggedPieceVisual.setLayoutX(mouseX - size / 2.0);
+        draggedPieceVisual.setLayoutY(mouseY - size / 2.0);
+        
+        draggedPieceVisual.setMouseTransparent(true); // Penting agar tidak menghalangi event mouse
+        draggedPieceVisual.setOpacity(0.8);
+        draggedPieceVisual.setEffect(new javafx.scene.effect.DropShadow(10, Color.BLACK));
+        
         dragLayer.getChildren().add(draggedPieceVisual);
     }
     
@@ -227,25 +187,5 @@ public class BoardInteractionHandler {
     
     private boolean isValidSquare(int col, int row) {
         return col >= 0 && col < 8 && row >= 0 && row < 8;
-    }
-    
-    public void reset() {
-        clearDragVisual();
-        deselectPiece();
-        isDragging = false;
-        hasMoved = false;
-        draggedPiece = null;
-    }
-    
-    public Piece getSelectedPiece() {
-        return selectedPiece;
-    }
-    
-    public Piece getDraggedPiece() {
-        return draggedPiece;
-    }
-    
-    public boolean isDragging() {
-        return isDragging;
     }
 }
