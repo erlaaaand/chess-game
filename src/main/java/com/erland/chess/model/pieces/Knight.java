@@ -6,7 +6,7 @@ public class Knight extends Piece {
         super(board);
         this.col = col; this.row = row; this.isWhite = isWhite;
         this.name = "Knight";
-        loadImage();
+        // Removed loadImage();
     }
     public boolean isValidMovement(int newCol, int newRow) {
         return Math.abs(newCol - col) * Math.abs(newRow - row) == 2;

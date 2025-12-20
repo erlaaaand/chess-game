@@ -1,4 +1,4 @@
-package com.erland.chess.util;
+package com.erland.chess.utils;
 
 import javafx.scene.image.Image;
 import com.erland.chess.Constants;

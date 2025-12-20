@@ -8,6 +8,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import com.erland.chess.model.Board;
+import com.erland.chess.model.Move; // Added import
 import com.erland.chess.view.MenuView.GameMode;
 
 import java.util.ArrayList;
@@ -128,10 +129,10 @@ public class ControlPanelUI {
     
     public void updateCheckStatus(boolean whiteInCheck, boolean blackInCheck) {
         if (whiteInCheck) {
-            checkLabel.setText("⚠ WHITE IN CHECK! ⚠");
+            checkLabel.setText("⚠️ WHITE IN CHECK! ⚠️");
             checkLabel.setTextFill(Color.web("#e74c3c"));
         } else if (blackInCheck) {
-            checkLabel.setText("⚠ BLACK IN CHECK! ⚠");
+            checkLabel.setText("⚠️ BLACK IN CHECK! ⚠️");
             checkLabel.setTextFill(Color.web("#e74c3c"));
         } else {
             checkLabel.setText("");
@@ -143,7 +144,8 @@ public class ControlPanelUI {
         statusLabel.setTextFill(color);
     }
     
-    public void updateMoveLog(ArrayList<Board.Move> moveHistory) {
+    // Fixed: Changed Board.Move to Move
+    public void updateMoveLog(ArrayList<Move> moveHistory) {
         StringBuilder log = new StringBuilder();
         
         for (int i = 0; i < moveHistory.size(); i++) {

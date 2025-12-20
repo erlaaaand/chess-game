@@ -5,6 +5,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import com.erland.chess.model.Board;
+import com.erland.chess.model.Move; // Added import
 import com.erland.chess.model.pieces.King;
 import com.erland.chess.model.pieces.Piece;
 
@@ -208,7 +209,8 @@ public class HighlightManager {
         return null;
     }
     
-    public void highlightLastMove(Board.Move move) {
+    // Fixed: Changed Board.Move to Move
+    public void highlightLastMove(Move move) {
         if (move == null) {
             return;
         }

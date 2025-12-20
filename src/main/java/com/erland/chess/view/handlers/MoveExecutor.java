@@ -117,6 +117,10 @@ public class MoveExecutor {
         if (isPromotion) {
             // Animate move first, then show promotion dialog
             animatePieceMove(piece.col, piece.row, targetCol, targetRow, piece, () -> {
+                // FIX: Pastikan board tahu bidak mana yang sedang bergerak sebelum dieksekusi
+                // karena animasi bersifat async, selectedPiece mungkin sudah null di BoardInteractionHandler
+                board.selectedPiece = piece;
+                
                 // Execute move on board
                 board.movePiece(targetCol, targetRow);
                 
@@ -130,6 +134,9 @@ public class MoveExecutor {
             int fromRow = piece.row;
             
             animatePieceMove(fromCol, fromRow, targetCol, targetRow, piece, () -> {
+                // FIX: Pastikan board tahu bidak mana yang sedang bergerak
+                board.selectedPiece = piece;
+
                 // Execute move on board
                 boolean success = board.movePiece(targetCol, targetRow);
                 

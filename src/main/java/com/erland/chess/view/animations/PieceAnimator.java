@@ -1,4 +1,3 @@
-// Path: src/main/java/com/erland/chess/view/animations/PieceAnimator.java
 package com.erland.chess.view.animations;
 
 import javafx.animation.*;
@@ -32,7 +31,8 @@ public class PieceAnimator {
     /**
      * Animate piece movement from one square to another
      */
-    public Timeline animateMove(Piece piece, int fromCol, int fromRow, 
+    // Fixed: Changed return type to Animation
+    public Animation animateMove(Piece piece, int fromCol, int fromRow, 
                                 int toCol, int toRow, Runnable onComplete) {
         
         // Create visual representation of the piece
@@ -81,7 +81,8 @@ public class PieceAnimator {
     /**
      * Animate piece capture with fade out effect
      */
-    public Timeline animateCapture(Piece capturedPiece, int col, int row, 
+    // Fixed: Changed return type to Animation
+    public Animation animateCapture(Piece capturedPiece, int col, int row, 
                                    Runnable onComplete) {
         
         Rectangle pieceRect = createPieceVisual(capturedPiece);
@@ -125,8 +126,8 @@ public class PieceAnimator {
                                Piece rook, int rookFromCol, int rookToCol,
                                Runnable onComplete) {
         
-        Timeline kingAnim = animateMove(king, kingFromCol, row, kingToCol, row, null);
-        Timeline rookAnim = animateMove(rook, rookFromCol, row, rookToCol, row, null);
+        Animation kingAnim = animateMove(king, kingFromCol, row, kingToCol, row, null);
+        Animation rookAnim = animateMove(rook, rookFromCol, row, rookToCol, row, null);
         
         ParallelTransition parallel = new ParallelTransition(kingAnim, rookAnim);
         parallel.setOnFinished(e -> {

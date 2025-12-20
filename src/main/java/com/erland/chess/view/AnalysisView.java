@@ -14,6 +14,7 @@ import com.erland.chess.model.Board;
 import com.erland.chess.model.Move;
 import com.erland.chess.utils.NotationConverter;
 import com.erland.chess.view.renderers.BoardRenderer;
+import com.erland.chess.view.MenuView.GameMode; // Corrected import
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +22,7 @@ import java.util.List;
 public class AnalysisView {
     private final BorderPane root;
     private final Board originalBoard;
-    private final BoardView.GameMode gameMode;
+    private final GameMode gameMode; // Fixed: uses MenuView.GameMode
     private final BoardRenderer boardRenderer;
     private final javafx.scene.canvas.Canvas boardCanvas;
     private final javafx.scene.canvas.Canvas pieceCanvas;
@@ -40,7 +41,7 @@ public class AnalysisView {
     public AnalysisView(javafx.stage.Stage stage, Board board, Object parent) {
         this.originalBoard = board;
         this.gameMoves = new ArrayList<>(board.moveHistory);
-        this.gameMode = BoardView.GameMode.PLAYER_VS_PLAYER; // Default for viewing
+        this.gameMode = GameMode.LOCAL_MULTIPLAYER; // Fixed: Default fallback, or pass as param
         
         this.root = new BorderPane();
         this.root.setPadding(new Insets(20));
@@ -168,9 +169,6 @@ public class AnalysisView {
                 final int moveNum = i + 1;
                 Move move = gameMoves.get(i);
                 
-                // 1. Evaluate posisi SEBELUM move (opsional, atau sesudahnya)
-                // Kita akan evaluate move yang barusan terjadi
-                
                 // Cari piece di tempBoard
                 com.erland.chess.model.pieces.Piece p = tempBoard.getPiece(move.fromCol, move.fromRow);
                 if (p != null) {
@@ -181,10 +179,9 @@ public class AnalysisView {
                     // Call AI Async
                     try {
                         // Kita gunakan evaluateMove dari bridge
-                        // Note: Kita kirim objek move asli, bridge akan ambil notasi UCI-nya
                         var evaluationFuture = bridge.evaluateMove(tempBoard, move);
                         
-                        // Wait for result (karena kita di background thread, aman untuk block sebentar)
+                        // Wait for result
                         var eval = evaluationFuture.join();
                         
                         if (eval != null) {

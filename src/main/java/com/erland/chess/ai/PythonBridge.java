@@ -41,7 +41,8 @@ public class PythonBridge {
                 return;
             }
             
-            ProcessBuilder pb = new ProcessBuilder("python", pythonScript.getAbsolutePath());
+            String pythonPath = "D:/kuliah/chess-game/ai_engine/venv/Scripts/python.exe"; // Atau path absolut: "D:/kuliah/chess-game/venv/Scripts/python.exe"
+            ProcessBuilder pb = new ProcessBuilder(pythonPath, pythonScript.getAbsolutePath());
             pb.redirectErrorStream(false);
             
             pythonProcess = pb.start();

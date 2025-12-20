@@ -6,7 +6,7 @@ public class King extends Piece {
         super(board);
         this.col = col; this.row = row; this.isWhite = isWhite;
         this.name = "King";
-        loadImage();
+        // Removed loadImage();
     }
     
     public boolean isValidMovement(int newCol, int newRow) {

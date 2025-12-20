@@ -4,7 +4,7 @@ import com.erland.chess.model.pieces.Piece;
 import java.io.Serializable;
 
 /**
- * Representasi satu langkah dalam catur
+ * Represents a single chess move
  */
 public class Move implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -30,7 +30,7 @@ public class Move implements Serializable {
     public long timestamp;
     public int moveNumber;
     
-    // Evaluation (untuk AI learning)
+    // Evaluation (for AI learning)
     public double evaluation = 0.0;
     public String moveQuality = "normal"; // brilliant, good, normal, inaccuracy, mistake, blunder
     
@@ -90,7 +90,7 @@ public class Move implements Serializable {
      * Parse UCI format to move coordinates
      */
     public static int[] parseUCI(String uci) {
-        if (uci.length() < 4) return null;
+        if (uci == null || uci.length() < 4) return null;
         
         int fromCol = uci.charAt(0) - 'a';
         int fromRow = 8 - (uci.charAt(1) - '0');

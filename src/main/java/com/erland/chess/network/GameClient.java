@@ -1,6 +1,6 @@
 package com.erland.chess.network;
 
-import com.erland.chess.model.Board;
+import com.erland.chess.model.Move;
 import com.erland.chess.view.BoardView;
 import com.google.gson.Gson;
 import javafx.application.Platform;
@@ -13,11 +13,11 @@ public class GameClient implements NetworkHandler {
     private String host;
     private int port;
     private Socket socket;
-    private PrintWriter out; // Ganti ObjectOutputStream
-    private BufferedReader in; // Ganti ObjectInputStream
+    private PrintWriter out;
+    private BufferedReader in;
     private BoardView boardPanel;
     private boolean running = false;
-    private final Gson gson = new Gson(); // Tambahkan Gson
+    private final Gson gson = new Gson();
 
     public GameClient(String host, int port) {
         this.host = host;
@@ -25,18 +25,16 @@ public class GameClient implements NetworkHandler {
     }
 
     @Override
-    public boolean connect() { // Pastikan signature sesuai interface
+    public boolean connect() {
         try {
             socket = new Socket(host, port);
             System.out.println("Connected to server: " + host + ":" + port);
             
-            // Setup Text Streams
             out = new PrintWriter(socket.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             
             running = true;
             
-            // Start listening thread
             new Thread(this::listenForMessages).start();
             
             return true;
@@ -50,7 +48,7 @@ public class GameClient implements NetworkHandler {
         while (running && socket != null && !socket.isClosed()) {
             try {
                 String json = in.readLine();
-                if (json == null) break; // End of stream
+                if (json == null) break;
                 
                 NetworkMessage msg = gson.fromJson(json, NetworkMessage.class);
                 handleMessage(msg);
@@ -95,12 +93,12 @@ public class GameClient implements NetworkHandler {
     }
 
     @Override
-    public void sendMove(Board.Move move) {
+    public void sendMove(Move move) {
         if (out != null) {
             NetworkMessage msg = new NetworkMessage(NetworkMessage.MessageType.MOVE);
             msg.move = move;
             String json = gson.toJson(msg);
-            out.println(json); // Kirim JSON string
+            out.println(json);
         }
     }
 

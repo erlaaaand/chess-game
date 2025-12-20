@@ -1,6 +1,7 @@
 package com.erland.chess.network;
 
 import com.erland.chess.model.Board;
+import com.erland.chess.model.Move; // Added import
 import com.erland.chess.view.BoardView;
 import com.google.gson.Gson;
 import javafx.application.Platform;
@@ -93,8 +94,9 @@ public class GameServer implements NetworkHandler {
         }
     }
 
+    // Fixed: Changed Board.Move to Move
     @Override
-    public void sendMove(Board.Move move) {
+    public void sendMove(Move move) {
         if (out != null) {
             NetworkMessage msg = new NetworkMessage(NetworkMessage.MessageType.MOVE);
             msg.move = move;
